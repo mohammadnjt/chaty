@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -167,6 +168,7 @@ func openStorage(cfg Config, settings *SettingsStore) (*Store, error) {
 
 func main() {
 	log.SetOutput(os.Stdout) // supervisors (BAS, systemd) show stderr as errors
+	mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	cfg := loadConfig()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		log.Fatal(err)

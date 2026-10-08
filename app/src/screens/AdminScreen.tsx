@@ -1,9 +1,9 @@
-import { Check, ChevronLeft, Database, KeyRound, RefreshCw, Shield, ShieldOff, UserCheck, UserX, Users } from 'lucide-react';
+import { Check, ChevronLeft, Database, KeyRound, Package, RefreshCw, Shield, ShieldOff, Upload, UserCheck, UserX, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import Avatar from '../components/Avatar';
 import Toggle from '../components/Toggle';
-import { api, errorText } from '../lib/api';
-import { formatListTime } from '../lib/format';
+import { api, errorText, type AndroidApp } from '../lib/api';
+import { formatBytes, formatListTime } from '../lib/format';
 import { goBack } from '../lib/router';
 import { socket } from '../lib/socket';
 import type { AdminOverview, Features, Settings, User } from '../lib/types';
@@ -302,6 +302,72 @@ function StorageTab({ overview, reload }: { overview: AdminOverview; reload: () 
   );
 }
 
+function AndroidCard() {
+  const [info, setInfo] = useState<AndroidApp | null | undefined>(undefined);
+  const [file, setFile] = useState<File | null>(null);
+  const [version, setVersion] = useState('');
+  const [progress, setProgress] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.publicConfig().then((c) => setInfo(c.android)).catch(() => setInfo(null));
+  }, []);
+
+  async function upload() {
+    if (!file) return;
+    setProgress(0);
+    try {
+      setInfo(await api.admin.uploadAndroid(file, version.trim(), setProgress));
+      setFile(null);
+      setVersion('');
+      toast('Android app uploaded');
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  return (
+    <>
+      <h3 className="section-title">Android app</h3>
+      <div className="card form-card">
+        <div className="storage-now">
+          <Package size={20} />
+          <div>
+            {info === undefined ? (
+              <span className="muted">Loading…</span>
+            ) : info ? (
+              <>
+                <b>Version {info.version || '—'}</b>{' '}
+                <span className="muted">
+                  · {formatBytes(info.size)} · uploaded {formatListTime(info.updatedAt)}
+                </span>
+                <p className="muted small ltr-inline">Download link: {location.origin}{info.url}</p>
+              </>
+            ) : (
+              <span className="muted">No APK uploaded yet — the landing page shows “coming soon”.</span>
+            )}
+          </div>
+        </div>
+        <label className="label">
+          New APK
+          <input className="field" type="file" accept=".apk,application/vnd.android.package-archive" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        </label>
+        <label className="label">
+          Version (shown to users)
+          <input className="field ltr" placeholder="1.1.0" value={version} onChange={(e) => setVersion(e.target.value)} />
+        </label>
+        <div className="row-end">
+          <button className="btn btn-primary" disabled={!file || progress !== null} onClick={upload}>
+            <Upload size={18} />
+            {progress !== null ? `Uploading ${Math.round(progress * 100)}%` : 'Upload'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function AdminScreen() {
   const [tab, setTab] = useState<Tab>('users');
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -539,6 +605,7 @@ export default function AdminScreen() {
               </label>
             </div>
             <SaveBar dirty={dirty} busy={busy} onSave={save} />
+            <AndroidCard />
           </>
         )}
         <div className="list-spacer" />

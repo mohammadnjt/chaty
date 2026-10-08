@@ -1,8 +1,9 @@
 // Hand-built SVG night landscape (sky, moon, mountains, lake at sunset)
-// used behind headers, chats, the call screen and the sign-in page.
+// used behind headers, chats, the call screen, the sign-in page and the
+// landing page ("wide", a 16:9 version).
 import { memo, useId } from 'react';
 
-type Variant = 'full' | 'header' | 'footer';
+type Variant = 'full' | 'header' | 'footer' | 'wide';
 
 // Paths are drawn relative to the horizon (y = 0, negative is up), 400 wide.
 const FAR =
@@ -36,6 +37,8 @@ function makeStars(count: number, w: number, h: number, seed: number) {
 
 const STARS_FULL = makeStars(70, 400, 300, 7);
 const STARS_HEADER = makeStars(34, 400, 110, 11);
+const STARS_WIDE = makeStars(170, 1600, 560, 23);
+const WIDE_LIGHTS = Array.from({ length: 30 }, (_, i) => ({ x: 1236 + i * 12 + ((i * 37) % 9), y: -5 - ((i * 13) % 6) }));
 const LIGHTS = Array.from({ length: 16 }, (_, i) => ({ x: 252 + i * 9 + ((i * 37) % 7), y: -4 - ((i * 13) % 5) }));
 const FLOWERS_L = [
   [22, -120], [44, -140], [70, -136], [96, -118], [112, -92], [118, -64], [12, -96], [60, -104], [88, -84],
@@ -227,8 +230,85 @@ function Mountains({ id, h, scale = 1 }: { id: string; h: number; scale?: number
   );
 }
 
+// 1600×900: the 400-wide ridges are tiled, every other tile mirrored so the
+// skyline stays continuous.
+function WideScene({ id, className }: { id: string; className?: string }) {
+  const W = 1600;
+  const H = 640;
+  const B = 900;
+  const sunX = 1150;
+  const tile = (d: string, fill: string, sy: number, opacity = 1) =>
+    [0, 1, 2, 3].map((i) => (
+      <path
+        key={i}
+        d={d}
+        fill={fill}
+        opacity={opacity}
+        transform={`translate(${i % 2 ? (i + 1) * 400 : i * 400} ${H}) scale(${i % 2 ? -1 : 1} ${sy})`}
+      />
+    ));
+  return (
+    <svg className={className} viewBox={`0 0 ${W} ${B}`} preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+      <Defs id={id} variant="full" />
+      <rect width={W} height={H + 1} fill={`url(#${id}-sky)`} />
+      <Stars stars={STARS_WIDE} />
+      <Moon id={id} x={1470} y={105} r={26} />
+      <g transform="scale(4 1)">
+        <Clouds h={H} />
+      </g>
+      <circle cx={sunX} cy={H - 20} r={420} fill={`url(#${id}-sun)`} />
+      <circle cx={sunX} cy={H - 26} r={22} fill="#fff1d6" />
+      {tile(FAR, `url(#${id}-far)`, 1.45)}
+      {tile(MID, '#2b2862', 1.7)}
+      <path d={SHORE_L} transform={`translate(0 ${H}) scale(2.4 1.3)`} fill="#17163f" />
+      <path d={SHORE_R} transform={`translate(${W - 400 * 1.2} ${H}) scale(1.2 1.3)`} fill="#141339" />
+      <g transform={`translate(0 ${H})`}>
+        {WIDE_LIGHTS.map((l, i) => (
+          <g key={i}>
+            <circle cx={l.x} cy={l.y} r={3.2} fill="#ffcf8a" opacity={0.2} />
+            <circle cx={l.x} cy={l.y} r={1.1} fill="#ffe1a8" />
+            <rect x={l.x - 0.5} y={4} width={1} height={8 + (i % 4) * 3} fill="#ffcf8a" opacity={0.3} />
+          </g>
+        ))}
+      </g>
+      <rect x={0} y={H} width={W} height={B - H} fill={`url(#${id}-water)`} />
+      {tile(FAR, `url(#${id}-fade)`, -1)}
+      {tile(MID, '#2a2766', -1.1, 0.35)}
+      {Array.from({ length: 16 }, (_, i) => {
+        const w = 150 - i * 8 + (i % 2) * 18;
+        return (
+          <rect key={i} x={sunX - w / 2 + ((i * 7) % 9) - 4} y={H + 6 + i * 13} width={w} height={3} rx={1.5} fill="#ffd2a8" opacity={0.6 - i * 0.033} />
+        );
+      })}
+      {[
+        [120, 40, 260],
+        [520, 80, 200],
+        [820, 130, 300],
+        [300, 170, 240],
+        [1320, 110, 220],
+      ].map(([x, dy, w], i) => (
+        <rect key={i} x={x} y={H + dy} width={w} height={1.6} rx={0.8} fill="#c7b6ff" opacity={0.12} />
+      ))}
+      <g transform={`translate(0 ${B}) scale(1.55)`} fill="#090a20">
+        <path d={BUSH_L} />
+      </g>
+      <g transform={`translate(${W} ${B}) scale(1.55) translate(-400 0)`} fill="#090a20">
+        <path d={BUSH_R} />
+      </g>
+      <g transform={`translate(0 ${B}) scale(1.55)`}>
+        <Flowers points={FLOWERS_L} y={0} />
+      </g>
+      <g transform={`translate(${W} ${B}) scale(1.55) translate(-400 0)`}>
+        <Flowers points={FLOWERS_R} y={0} />
+      </g>
+    </svg>
+  );
+}
+
 function Scenery({ variant = 'full', className }: { variant?: Variant; className?: string }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, '');
+
+  if (variant === 'wide') return <WideScene id={id} className={className} />;
 
   if (variant === 'header') {
     const H = 150;

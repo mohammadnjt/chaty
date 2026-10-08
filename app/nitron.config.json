@@ -1,7 +1,7 @@
 {
   "name": "Chaty",
   "packageId": "app.chaty.messenger",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "entry": "web-build/index.html",
   "orientation": "portrait",
   "statusBar": true,
@@ -27,5 +27,9 @@
   },
   "splashScreen": {
     "backgroundColor": "#0a0e24"
-  }
+  },
+  "exclude": [
+    "landing.html",
+    "sw.js"
+  ]
 }

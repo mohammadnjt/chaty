@@ -11,6 +11,8 @@ class Socket {
   private handlers = new Map<string, Set<Handler>>();
   private statusHandlers = new Set<(connected: boolean) => void>();
   private binaryHandler: ((data: ArrayBuffer) => void) | null = null;
+  private heartbeat: number | undefined;
+  private lastSeen = 0;
   connected = false;
 
   constructor() {
@@ -77,9 +79,23 @@ class Socket {
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
+      this.lastSeen = Date.now();
       this.setConnected(true);
+      // Mobile networks can kill a connection without closing it; ping and
+      // reconnect if nothing comes back, instead of waiting minutes.
+      clearInterval(this.heartbeat);
+      this.heartbeat = window.setInterval(() => {
+        if (this.ws !== ws) return clearInterval(this.heartbeat);
+        if (Date.now() - this.lastSeen > 30_000) {
+          ws.onclose?.(new CloseEvent('close'));
+          ws.close();
+          return;
+        }
+        this.send('ping');
+      }, 10_000);
     };
     ws.onmessage = (e) => {
+      this.lastSeen = Date.now();
       if (e.data instanceof ArrayBuffer) {
         this.binaryHandler?.(e.data);
         return;
@@ -100,6 +116,7 @@ class Socket {
     };
     ws.onclose = () => {
       if (this.ws !== ws) return;
+      clearInterval(this.heartbeat);
       this.ws = null;
       this.setConnected(false);
       if (!this.token) return;

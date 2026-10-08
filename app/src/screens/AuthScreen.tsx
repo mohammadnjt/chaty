@@ -12,7 +12,7 @@ export default function AuthScreen() {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [server, setServer] = useState(getServerUrl());
-  const [showServer, setShowServer] = useState(isNativeShell);
+  const [showServer, setShowServer] = useState(isNativeShell && !getServerUrl());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
@@ -157,7 +157,14 @@ export default function AuthScreen() {
             <button className="btn btn-primary wide" disabled={busy}>
               {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
             </button>
-            {!isNativeShell && (
+            {isNativeShell ? (
+              !showServer && (
+                <button type="button" className="link-btn" onClick={() => setShowServer(true)}>
+                  <Server size={14} />
+                  {server.replace(/^https?:\/\//, '')} · change server
+                </button>
+              )
+            ) : (
               <button
                 type="button"
                 className="link-btn"

@@ -46,10 +46,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 /** Upload with progress (fetch can't report upload progress). */
-function uploadWithProgress(file: Blob, filename: string, onProgress?: (p: number) => void) {
-  return new Promise<{ url: string; name: string; size: number }>((resolve, reject) => {
+function uploadWithProgress(
+  file: Blob,
+  filename: string,
+  onProgress?: (p: number) => void,
+  path = '/api/upload',
+  fields: Record<string, string> = {},
+) {
+  return new Promise<any>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', apiUrl('/api/upload'));
+    xhr.open('POST', apiUrl(path));
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
     xhr.onload = () => {
@@ -64,6 +70,7 @@ function uploadWithProgress(file: Blob, filename: string, onProgress?: (p: numbe
     };
     xhr.onerror = () => reject(new ApiError("Can't reach the server. Check your connection.", 0));
     const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
     form.append('file', file, filename);
     xhr.send(form);
   });
@@ -85,10 +92,18 @@ export interface SendPayload {
   replyTo?: number;
 }
 
+export interface AndroidApp {
+  url: string;
+  version: string;
+  size: number;
+  updatedAt: number;
+}
+
 export interface PublicConfig {
   appName: string;
   registrationOpen: boolean;
   requireApproval: boolean;
+  android: AndroidApp | null;
 }
 
 export const PAGE_SIZE = 60;
@@ -129,7 +144,8 @@ export const api = {
   forward: (id: number, conversationIds: number[]) =>
     request<Message[]>('POST', `/api/messages/${id}/forward`, { conversationIds }),
   calls: () => request<CallRecord[]>('GET', '/api/calls'),
-  upload: uploadWithProgress,
+  upload: (file: Blob, filename: string, onProgress?: (p: number) => void) =>
+    uploadWithProgress(file, filename, onProgress) as Promise<{ url: string; name: string; size: number }>,
   admin: {
     overview: () => request<AdminOverview>('GET', '/api/admin/overview'),
     users: () => request<User[]>('GET', '/api/admin/users'),
@@ -142,6 +158,8 @@ export const api = {
       request<{ ok: boolean; describe: string; records?: number }>('POST', '/api/admin/storage/test', { driver, dsn }),
     switchStorage: (driver: string, dsn: string) =>
       request<{ ok: boolean; describe: string }>('POST', '/api/admin/storage/switch', { driver, dsn }),
+    uploadAndroid: (file: File, version: string, onProgress?: (p: number) => void) =>
+      uploadWithProgress(file, file.name, onProgress, '/api/admin/android', { version }) as Promise<AndroidApp>,
   },
 };
 

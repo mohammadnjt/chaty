@@ -67,6 +67,7 @@ let signalChain: Promise<void> = Promise.resolve();
 let remoteTracks: MediaStreamTrack[] = [];
 let resetTimer: number | undefined;
 let failTimer: number | undefined;
+let resumeTimer: number | undefined;
 let restarts = 0;
 let p2pTimer: number | undefined;
 let relay: MediaRelay | null = null;
@@ -269,6 +270,7 @@ function finish(callId: string, reason: string | null, opts: { silent?: boolean;
   const s = get();
   if (s.callId !== callId) return;
   clearTimeout(failTimer);
+  clearTimeout(resumeTimer);
   clearTimeout(p2pTimer);
   stopTones();
   pc?.close();
@@ -347,7 +349,8 @@ export async function acceptCall() {
       armP2PTimeout();
     }
   } catch (e) {
-    socket.send('call:reject', { callId });
+    const why = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    socket.send('call:reject', { callId, reason: `could not start: ${why}` });
     finish(callId, 'failed', { text: e instanceof CallError ? e.message : 'Call failed' });
   }
 }
@@ -355,7 +358,7 @@ export async function acceptCall() {
 export function declineCall() {
   const { callId } = get();
   if (!callId) return;
-  socket.send('call:reject', { callId });
+  socket.send('call:reject', { callId, reason: 'declined by user' });
   finish(callId, null, { silent: true });
 }
 
@@ -439,7 +442,7 @@ socket.on('call:ringing', (d: { callId: string }) => {
 socket.on('call:incoming', (d: { callId: string; conversationId: number; kind: CallKind; from: User }) => {
   const cur = get();
   if (cur.phase !== 'idle' && cur.phase !== 'ended') {
-    socket.send('call:reject', { callId: d.callId });
+    socket.send('call:reject', { callId: d.callId, reason: `busy here (${cur.phase})` });
     return;
   }
   clearTimeout(resetTimer);
@@ -530,8 +533,43 @@ socket.on('call:ended', (d: { callId: string; reason: string }) => {
   finish(d.callId, d.reason);
 });
 
-// The server drops a call when our socket goes away, so follow suit.
+const mediaFlowing = () => !!relay || pc?.connectionState === 'connected';
+
+// Losing the socket doesn't end an answered call: WebRTC media keeps flowing
+// on its own, and the server keeps the call for a while so we can resume it.
 socket.onStatus((connected) => {
   const { callId, phase } = get();
-  if (!connected && callId && phase !== 'idle' && phase !== 'ended') finish(callId, 'offline');
+  if (connected || !callId || phase === 'idle' || phase === 'ended' || phase === 'incoming') return;
+  if (phase === 'outgoing') {
+    finish(callId, 'offline'); // the server ends a call whose caller left while ringing
+    return;
+  }
+  if (relay || !mediaFlowing()) set({ status: 'Reconnecting…' });
+  clearTimeout(resumeTimer);
+  resumeTimer = window.setTimeout(() => {
+    if (get().callId === callId && !socket.connected) finish(callId, 'offline');
+  }, 35_000);
+});
+
+socket.on('hello', () => {
+  const { callId, phase } = get();
+  if (callId && (phase === 'connecting' || phase === 'active')) socket.send('call:resume', { callId });
+});
+
+socket.on('call:resumed', (d: { callId: string; peerConnected: boolean }) => {
+  if (d.callId !== get().callId) return;
+  clearTimeout(resumeTimer);
+  if (relay) relay.startSending(); // chunks were lost while offline: start a fresh stream
+  else if (pc && pc.connectionState !== 'connected') void restartIce();
+  if (d.peerConnected && (relay || mediaFlowing())) set({ status: '' });
+});
+
+socket.on('call:peer-reconnecting', (d: { callId: string }) => {
+  if (d.callId === get().callId && relay) set({ status: 'Reconnecting…' });
+});
+
+socket.on('call:peer-back', (d: { callId: string }) => {
+  if (d.callId !== get().callId) return;
+  if (relay) relay.startSending();
+  if (relay || mediaFlowing()) set({ status: '' });
 });

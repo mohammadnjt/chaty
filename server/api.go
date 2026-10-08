@@ -70,6 +70,7 @@ func (s *Server) routes() http.Handler {
 		s.hub.serve(w, r, u)
 	})
 	mux.Handle("GET /uploads/", uploadsHandler(s.uploadDir()))
+	mux.HandleFunc("GET /download/chaty.apk", s.downloadAPK)
 	mux.Handle("/", spaHandler(s.cfg.StaticDir))
 	return withCORS(mux)
 }
@@ -152,7 +153,47 @@ func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {
 	st := s.settings.Get()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"appName": st.AppName, "registrationOpen": st.RegistrationOpen, "requireApproval": st.RequireApproval,
+		"android": s.apkInfo(),
 	})
+}
+
+// ---------- Android app download ----------
+
+// The APK the admin uploaded lives in the data folder (files/downloads), so
+// it survives updates and isn't part of the repository.
+type apkInfo struct {
+	URL       string `json:"url"`
+	Version   string `json:"version"`
+	Size      int64  `json:"size"`
+	UpdatedAt int64  `json:"updatedAt"`
+}
+
+func (s *Server) apkPath() string { return filepath.Join(s.cfg.DataDir, "downloads", "chaty.apk") }
+
+func (s *Server) apkInfo() *apkInfo {
+	st, err := os.Stat(s.apkPath())
+	if err != nil {
+		return nil
+	}
+	info := &apkInfo{URL: "/download/chaty.apk", Size: st.Size(), UpdatedAt: st.ModTime().UnixMilli()}
+	if b, err := os.ReadFile(s.apkPath() + ".json"); err == nil {
+		var meta struct{ Version string }
+		if json.Unmarshal(b, &meta) == nil {
+			info.Version = meta.Version
+		}
+	}
+	return info
+}
+
+func (s *Server) downloadAPK(w http.ResponseWriter, r *http.Request) {
+	if _, err := os.Stat(s.apkPath()); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+	w.Header().Set("Content-Disposition", `attachment; filename="chaty.apk"`)
+	w.Header().Set("Cache-Control", "no-cache")
+	http.ServeFile(w, r, s.apkPath())
 }
 
 func (s *Server) clientConfig(w http.ResponseWriter, r *http.Request, me UserRec) {
@@ -1052,7 +1093,8 @@ func uploadsHandler(dir string) http.Handler {
 	})
 }
 
-// spaHandler serves the built web app, falling back to index.html.
+// spaHandler serves the built web: the landing page at /, the app at /app/
+// (index.html, also what the Android app opens), and static files.
 func spaHandler(dir string) http.Handler {
 	if dir == "" {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1065,19 +1107,41 @@ func spaHandler(dir string) http.Handler {
 		})
 	}
 	fs := http.FileServer(http.Dir(dir))
+	app := filepath.Join(dir, "index.html")
+	landing := filepath.Join(dir, "landing.html")
+	if _, err := os.Stat(landing); err != nil {
+		landing = app // older builds without a landing page
+	}
+	page := func(w http.ResponseWriter, r *http.Request, file string) {
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeFile(w, r, file)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
+		path := r.URL.Path
+		switch {
+		case strings.HasPrefix(path, "/api/"):
 			httpError(w, http.StatusNotFound, "not found")
 			return
-		}
-		p := filepath.Join(dir, filepath.FromSlash(filepath.Clean("/"+r.URL.Path)))
-		if st, err := os.Stat(p); err != nil || st.IsDir() {
-			w.Header().Set("Cache-Control", "no-cache")
-			http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+		case path == "/app":
+			http.Redirect(w, r, "/app/", http.StatusMovedPermanently)
+			return
+		case strings.HasPrefix(path, "/app/"):
+			page(w, r, app)
+			return
+		case path == "/":
+			page(w, r, landing)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/assets/") {
+		p := filepath.Join(dir, filepath.FromSlash(filepath.Clean("/"+path)))
+		if st, err := os.Stat(p); err != nil || st.IsDir() {
+			page(w, r, landing)
+			return
+		}
+		switch {
+		case strings.HasPrefix(path, "/assets/"):
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case path == "/sw.js" || path == "/manifest.webmanifest" || strings.HasSuffix(path, ".html"):
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		fs.ServeHTTP(w, r)
 	})

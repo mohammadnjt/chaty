@@ -302,6 +302,8 @@ func (h *Hub) handle(c *Client, in inbound) {
 		h.callEnd(c, in.Data)
 	case "call:signal":
 		h.callSignal(c, in.Data)
+	case "call:resume":
+		h.callResume(c, in.Data)
 	}
 }
 
@@ -311,7 +313,7 @@ func (h *Hub) relayMedia(c *Client, data []byte) {
 	var target *Client
 	h.mu.Lock()
 	if id, ok := h.inCall[c.userID]; ok {
-		if call := h.calls[id]; call != nil && call.calleeConn != nil {
+		if call := h.calls[id]; call != nil && call.answeredAt > 0 {
 			switch c {
 			case call.callerConn:
 				target = call.calleeConn

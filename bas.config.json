@@ -3,8 +3,13 @@
   "type": "backend",
   "port": 5177,
   "autoStart": true,
-  "groups": ["chaty"],
+  "groups": [
+    "chaty"
+  ],
   "build": "npm run build",
   "start": "cd server && ./chaty",
-  "env": { "GOPROXY": "https://goproxy.io|https://proxy.golang.org|direct" }
+  "env": {
+    "NODE_ENV": "production",
+    "GOPROXY": "https://goproxy.cn|https://proxy.golang.org|direct"
+  }
 }

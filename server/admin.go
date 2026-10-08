@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -16,6 +20,7 @@ func (s *Server) adminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/admin/settings", s.admin(s.adminSettings))
 	mux.HandleFunc("POST /api/admin/storage/test", s.admin(s.adminStorageTest))
 	mux.HandleFunc("POST /api/admin/storage/switch", s.admin(s.adminStorageSwitch))
+	mux.HandleFunc("POST /api/admin/android", s.admin(s.adminUploadAPK))
 }
 
 func (s *Server) admin(h authedHandler) http.HandlerFunc {
@@ -202,4 +207,53 @@ func (s *Server) adminStorageSwitch(w http.ResponseWriter, r *http.Request, me U
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "storage": next.Storage, "describe": p.Describe()})
+}
+
+// adminUploadAPK replaces the Android app offered on the landing page.
+func (s *Server) adminUploadAPK(w http.ResponseWriter, r *http.Request, me UserRec) {
+	r.Body = http.MaxBytesReader(w, r.Body, 300<<20)
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		httpError(w, http.StatusBadRequest, "choose an .apk file (up to 300 MB)")
+		return
+	}
+	defer file.Close()
+	head := make([]byte, 4)
+	if _, err := io.ReadFull(file, head); err != nil || string(head) != "PK\x03\x04" {
+		httpError(w, http.StatusBadRequest, "that isn't an APK file")
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		serverError(w, err)
+		return
+	}
+	dst := s.apkPath()
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		serverError(w, err)
+		return
+	}
+	tmp := dst + ".upload"
+	out, err := os.Create(tmp)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	if _, err := io.Copy(out, file); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		httpError(w, http.StatusBadRequest, "upload failed")
+		return
+	}
+	out.Close()
+	if err := os.Rename(tmp, dst); err != nil {
+		serverError(w, err)
+		return
+	}
+	version := strings.TrimSpace(r.FormValue("version"))
+	if len(version) > 32 {
+		version = version[:32]
+	}
+	meta, _ := json.Marshal(map[string]string{"version": version})
+	os.WriteFile(dst+".json", meta, 0o644)
+	writeJSON(w, http.StatusOK, s.apkInfo())
 }
