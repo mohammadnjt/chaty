@@ -1,0 +1,10 @@
+{
+  "name": "Chaty",
+  "type": "backend",
+  "port": 5177,
+  "autoStart": true,
+  "groups": ["chaty"],
+  "build": "npm run build",
+  "start": "cd server && ./chaty",
+  "env": { "GOPROXY": "https://goproxy.io|https://proxy.golang.org|direct" }
+}

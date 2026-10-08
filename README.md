@@ -62,6 +62,57 @@ DOMAIN=chat.example.com
 
 پورت‌های 80 و 443 باید باز باشند. برای TURN، پورت 3478 (UDP و TCP) و بازهٔ UDP 49160-49200 را باز کنید و TURN را از پنل ادمین روشن کنید.
 
+## اجرا روی BAS
+
+پروژه برای [BAS](https://github.com/mohammadnjt/bas) آماده است. فایل [bas.config.json](bas.config.json) به BAS می‌گوید چطور بیلد و اجرا کند:
+
+```json
+{
+  "name": "Chaty",
+  "type": "backend",
+  "port": 5177,
+  "build": "npm run build",
+  "start": "cd server && ./chaty"
+}
+```
+
+**پیش‌نیاز سرور (یک‌بار):** Node و Go نسخهٔ ۱.۲۱ یا بالاتر.
+
+**نصب:**
+
+```sh
+cd /path/to/bas/apps
+git clone https://github.com/mohammadnjt/chaty.git chaty
+cp chaty/server/.env.example chaty/server/.env   # بعد ADMIN_PASSWORD را عوض کنید
+```
+
+BAS ظرف چند ثانیه پروژه را پیدا می‌کند، بیلد و اجرا می‌کند. آدرس اپ `http://IP-سرور:5177` است.
+
+**چند نکته:**
+
+- **آپدیت:** در BAS گروه `chaty` را آپدیت کنید. خودش `git pull` می‌کند، بیلد می‌گیرد و ری‌استارت می‌کند.
+- **داده‌ها:** در `chaty/files` هستند و `git pull` به آن‌ها دست نمی‌زند. از همین پوشه بکاپ بگیرید.
+- **دانلود ماژول‌های Go:** در `bas.config.json` مقدار `GOPROXY` روی `goproxy.io` تنظیم شده، برای سرورهایی که به `proxy.golang.org` دسترسی ندارند.
+- **فایل `server/.env`:** در آن `PORT` یا `DOMAIN` نگذارید. پورت را BAS می‌دهد.
+
+**HTTPS** (لازم برای تماس و اپ اندروید): پشت nginx با گواهی:
+
+```nginx
+server {
+    server_name chat.example.com;
+    client_max_body_size 60m;
+    location / {
+        proxy_pass http://127.0.0.1:5177;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 3600s;
+    }
+    # گواهی: certbot --nginx -d chat.example.com
+}
+```
+
 ## ساخت APK
 
 ```sh

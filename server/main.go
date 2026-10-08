@@ -166,6 +166,7 @@ func openStorage(cfg Config, settings *SettingsStore) (*Store, error) {
 }
 
 func main() {
+	log.SetOutput(os.Stdout) // supervisors (BAS, systemd) show stderr as errors
 	cfg := loadConfig()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		log.Fatal(err)
