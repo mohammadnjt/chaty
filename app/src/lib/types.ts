@@ -113,8 +113,7 @@ export interface Settings {
     turnPublicIp: string;
     turnHost: string;
     turnPort: number;
-    turnUser: string;
-    turnPassword: string;
+    turnSecret: string;
     turnRelayMin: number;
     turnRelayMax: number;
     extraIce: string;

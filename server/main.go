@@ -184,12 +184,16 @@ func main() {
 	}
 	ensureAdmin(store, cfg)
 
-	turn := &turnManager{}
+	turn := &turnManager{allow: func(id int64) bool {
+		u, ok := store.UserByID(id)
+		return ok && u.Status == "active"
+	}}
 	if err := turn.Apply(settings.Get().Calls); err != nil {
 		log.Printf("turn: %v", err)
 	}
 
 	srv := &Server{cfg: cfg, store: store, hub: newHub(store, settings), settings: settings, turn: turn}
+	srv.hub.configFor = srv.clientConfigData
 	httpSrv := &http.Server{Handler: srv.routes(), ReadHeaderTimeout: 15 * time.Second}
 	errc := make(chan error, 2)
 

@@ -142,7 +142,9 @@ func (s *Server) adminSettings(w http.ResponseWriter, r *http.Request, me UserRe
 	if err := s.turn.Apply(next.Calls); err != nil {
 		turnErr = err.Error()
 	}
-	s.hub.broadcast("config", s.clientConfigData())
+	for _, id := range s.hub.onlineUsers() {
+		s.hub.sendToUsers([]int64{id}, "config", s.clientConfigData(id))
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"settings": next, "turnError": turnErr})
 }
 

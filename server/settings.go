@@ -36,11 +36,11 @@ type CallSettings struct {
 	TurnPublicIP  string   `json:"turnPublicIp"`
 	TurnHost      string   `json:"turnHost"`
 	TurnPort      int      `json:"turnPort"`
-	TurnUser      string   `json:"turnUser"`
-	TurnPassword  string   `json:"turnPassword"`
-	TurnRelayMin  int      `json:"turnRelayMin"`
-	TurnRelayMax  int      `json:"turnRelayMax"`
-	ExtraICE      string   `json:"extraIce"` // optional JSON array of RTCIceServer
+	// TurnSecret signs the temporary TURN passwords handed to signed-in users.
+	TurnSecret   string `json:"turnSecret"`
+	TurnRelayMin int    `json:"turnRelayMin"`
+	TurnRelayMax int    `json:"turnRelayMax"`
+	ExtraICE     string `json:"extraIce"` // optional JSON array of RTCIceServer
 }
 
 type StorageSettings struct {
@@ -73,8 +73,7 @@ func defaultSettings(cfg Config) Settings {
 			P2PTimeoutSec: 12,
 			STUNServers:   []string{"stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"},
 			TurnPort:      3478,
-			TurnUser:      "chaty",
-			TurnPassword:  randomHex(12),
+			TurnSecret:    randomHex(16),
 			TurnRelayMin:  49160,
 			TurnRelayMax:  49200,
 		},
@@ -87,8 +86,7 @@ func defaultSettings(cfg Config) Settings {
 	}
 	s.Calls.TurnHost = env("TURN_HOST", "")
 	fmt.Sscanf(env("TURN_PORT", "3478"), "%d", &s.Calls.TurnPort)
-	s.Calls.TurnUser = env("TURN_USER", s.Calls.TurnUser)
-	s.Calls.TurnPassword = env("TURN_PASSWORD", s.Calls.TurnPassword)
+	s.Calls.TurnSecret = env("TURN_SECRET", s.Calls.TurnSecret)
 	fmt.Sscanf(env("TURN_RELAY_PORTS", ""), "%d-%d", &s.Calls.TurnRelayMin, &s.Calls.TurnRelayMax)
 	s.Calls.ExtraICE = env("ICE_SERVERS", "")
 	return s
@@ -118,6 +116,9 @@ func (s *Settings) validate() error {
 	}
 	if s.Calls.TurnEnabled && s.Calls.TurnPublicIP == "" {
 		return errors.New("TURN needs the server's public IP")
+	}
+	if s.Calls.TurnEnabled && len(s.Calls.TurnSecret) < 12 {
+		return errors.New("the TURN secret must be at least 12 characters")
 	}
 	if s.Calls.ExtraICE != "" {
 		var v []map[string]any

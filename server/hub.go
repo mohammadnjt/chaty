@@ -141,6 +141,8 @@ func (c *Client) readPump() {
 type Hub struct {
 	store    *Store
 	settings *SettingsStore
+	// configFor builds a user's client config (set by the server).
+	configFor func(userID int64) map[string]any
 
 	mu      sync.Mutex
 	clients map[int64]map[*Client]struct{}
@@ -259,14 +261,23 @@ func (h *Hub) sendToUsers(userIDs []int64, typ string, data any) {
 	}
 }
 
-func (h *Hub) broadcast(typ string, data any) {
+func (h *Hub) onlineUsers() []int64 {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	ids := make([]int64, 0, len(h.clients))
 	for id := range h.clients {
 		ids = append(ids, id)
 	}
-	h.mu.Unlock()
-	h.sendToUsers(ids, typ, data)
+	return ids
+}
+
+// refreshConfig sends a user their current config (with a fresh TURN login)
+// right before they set up a call, so long-open apps never dial with an
+// expired one.
+func (h *Hub) refreshConfig(userID int64) {
+	if h.configFor != nil && h.settings.Get().Calls.TurnEnabled {
+		h.sendToUsers([]int64{userID}, "config", h.configFor(userID))
+	}
 }
 
 func (h *Hub) handle(c *Client, in inbound) {

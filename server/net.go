@@ -3,10 +3,13 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"log"
@@ -14,6 +17,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,10 +33,67 @@ type turnManager struct {
 	srv *turn.Server
 	cur CallSettings
 	err string
+	// allow reports whether a user may still use the relay (their account is active).
+	allow func(userID int64) bool
 }
 
 func turnKey(c CallSettings) string {
-	return fmt.Sprintf("%v|%s|%d|%s|%s|%d|%d", c.TurnEnabled, c.TurnPublicIP, c.TurnPort, c.TurnUser, c.TurnPassword, c.TurnRelayMin, c.TurnRelayMax)
+	return fmt.Sprintf("%v|%s|%d|%s|%d|%d", c.TurnEnabled, c.TurnPublicIP, c.TurnPort, c.TurnSecret, c.TurnRelayMin, c.TurnRelayMax)
+}
+
+// Each signed-in user gets their own short-lived TURN login (the "TURN REST
+// API" scheme): username "<expiry>:<userId>", password HMAC-SHA1(secret,
+// username). Nothing reusable ships to clients, and a blocked account stops
+// working at its next refresh.
+const turnCredTTL = 24 * time.Hour
+
+func turnCredentials(secret string, userID int64) (username, password string) {
+	username = fmt.Sprintf("%d:%d", time.Now().Add(turnCredTTL).Unix(), userID)
+	return username, turnPassword(secret, username)
+}
+
+func turnPassword(secret, username string) string {
+	mac := hmac.New(sha1.New, []byte(secret))
+	mac.Write([]byte(username))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// turnUserID returns the user a TURN username belongs to, if it hasn't expired.
+func turnUserID(username string) (int64, bool) {
+	exp, id, ok := strings.Cut(username, ":")
+	if !ok {
+		return 0, false
+	}
+	expiry, err := strconv.ParseInt(exp, 10, 64)
+	if err != nil || time.Now().Unix() > expiry {
+		return 0, false
+	}
+	uid, err := strconv.ParseInt(id, 10, 64)
+	return uid, err == nil
+}
+
+// Peers the relay will not send to: loopback, private and other non-public
+// ranges, so it can't be used to reach this server's internal network.
+var nonPublicNets = func() []*net.IPNet {
+	var out []*net.IPNet
+	for _, c := range []string{"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "198.18.0.0/15", "240.0.0.0/4"} {
+		_, n, _ := net.ParseCIDR(c)
+		out = append(out, n)
+	}
+	return out
+}()
+
+func isPublicIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsMulticast() ||
+		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() {
+		return false
+	}
+	for _, n := range nonPublicNets {
+		if n.Contains(ip) {
+			return false
+		}
+	}
+	return true
 }
 
 func (t *turnManager) Apply(c CallSettings) error {
@@ -49,7 +111,7 @@ func (t *turnManager) Apply(c CallSettings) error {
 	if !c.TurnEnabled {
 		return nil
 	}
-	srv, err := startTURN(c)
+	srv, err := startTURN(c, t.allow)
 	if err != nil {
 		t.err = err.Error()
 		return err
@@ -73,7 +135,7 @@ func (t *turnManager) Close() {
 	}
 }
 
-func startTURN(c CallSettings) (*turn.Server, error) {
+func startTURN(c CallSettings, allow func(userID int64) bool) (*turn.Server, error) {
 	ip := net.ParseIP(c.TurnPublicIP)
 	if ip == nil {
 		return nil, fmt.Errorf("TURN public IP %q is not an IP address", c.TurnPublicIP)
@@ -96,15 +158,19 @@ func startTURN(c CallSettings) (*turn.Server, error) {
 			MaxPort:      uint16(c.TurnRelayMax),
 		}
 	}
-	realm := "chaty"
-	key := turn.GenerateAuthKey(c.TurnUser, realm, c.TurnPassword)
+	// Our own address stays reachable: that's where the other caller's relay lives.
+	permit := func(_ net.Addr, peer net.IP) bool { return peer.Equal(ip) || isPublicIP(peer) }
 	s, err := turn.NewServer(turn.ServerConfig{
-		Realm: realm,
+		Realm: "chaty",
 		AuthHandler: func(username, realm string, src net.Addr) ([]byte, bool) {
-			return key, username == c.TurnUser
+			uid, ok := turnUserID(username)
+			if !ok || (allow != nil && !allow(uid)) {
+				return nil, false
+			}
+			return turn.GenerateAuthKey(username, realm, turnPassword(c.TurnSecret, username)), true
 		},
-		PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: udp, RelayAddressGenerator: gen()}},
-		ListenerConfigs:   []turn.ListenerConfig{{Listener: tcp, RelayAddressGenerator: gen()}},
+		PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: udp, RelayAddressGenerator: gen(), PermissionHandler: permit}},
+		ListenerConfigs:   []turn.ListenerConfig{{Listener: tcp, RelayAddressGenerator: gen(), PermissionHandler: permit}},
 	})
 	if err != nil {
 		udp.Close()

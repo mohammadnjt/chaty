@@ -121,6 +121,7 @@ func (h *Hub) callInvite(c *Client, raw json.RawMessage) {
 	log.Printf("call %s: %s call %d → %d", shortID(call.id), call.kind, call.caller, callee)
 	h.store.InsertCall(CallRec{ID: call.id, ConvID: call.convID, CallerID: call.caller, CalleeID: callee, Kind: call.kind, Status: "ringing"})
 	c.emit("call:ringing", callRef{call.id})
+	h.refreshConfig(callee)
 	h.sendToUsers([]int64{callee}, "call:incoming", map[string]any{
 		"callId":         call.id,
 		"conversationId": call.convID,
@@ -158,6 +159,7 @@ func (h *Hub) callAccept(c *Client, raw json.RawMessage) {
 	log.Printf("call %s: answered by %d", shortID(call.id), call.callee)
 	h.store.SetCallStatus(call.id, "ongoing", call.answeredAt, 0)
 	if callerConn != nil {
+		h.refreshConfig(call.caller)
 		callerConn.emit("call:accepted", callRef{call.id})
 	}
 	for _, o := range others {

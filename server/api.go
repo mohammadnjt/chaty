@@ -197,10 +197,11 @@ func (s *Server) downloadAPK(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) clientConfig(w http.ResponseWriter, r *http.Request, me UserRec) {
-	writeJSON(w, http.StatusOK, s.clientConfigData())
+	writeJSON(w, http.StatusOK, s.clientConfigData(me.ID))
 }
 
-func (s *Server) clientConfigData() map[string]any {
+// clientConfigData is per user: it carries that user's own TURN login.
+func (s *Server) clientConfigData(userID int64) map[string]any {
 	st := s.settings.Get()
 	return map[string]any{
 		"appName":     st.AppName,
@@ -209,12 +210,12 @@ func (s *Server) clientConfigData() map[string]any {
 		"calls": map[string]any{
 			"mode":          st.Calls.Mode,
 			"p2pTimeoutSec": st.Calls.P2PTimeoutSec,
-			"iceServers":    s.iceServers(st.Calls),
+			"iceServers":    s.iceServers(st.Calls, userID),
 		},
 	}
 }
 
-func (s *Server) iceServers(c CallSettings) []map[string]any {
+func (s *Server) iceServers(c CallSettings, userID int64) []map[string]any {
 	out := []map[string]any{}
 	if c.TurnEnabled {
 		host := c.TurnHost
@@ -225,12 +226,13 @@ func (s *Server) iceServers(c CallSettings) []map[string]any {
 			host = c.TurnPublicIP
 		}
 		addr := host + ":" + strconv.Itoa(c.TurnPort)
+		user, pass := turnCredentials(c.TurnSecret, userID)
 		out = append(out,
 			map[string]any{"urls": []string{"stun:" + addr}},
 			map[string]any{
 				"urls":       []string{"turn:" + addr + "?transport=udp", "turn:" + addr + "?transport=tcp"},
-				"username":   c.TurnUser,
-				"credential": c.TurnPassword,
+				"username":   user,
+				"credential": pass,
 			})
 	}
 	if len(c.STUNServers) > 0 {

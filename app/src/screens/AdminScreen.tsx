@@ -532,16 +532,14 @@ export default function AdminScreen() {
                   />
                 </label>
               </div>
-              <div className="field-row">
-                <label className="label">
-                  Username
-                  <input className="field ltr" value={calls.turnUser} onChange={(e) => set((s) => ((s.calls.turnUser = e.target.value), s))} />
-                </label>
-                <label className="label">
-                  Password
-                  <input className="field ltr" value={calls.turnPassword} onChange={(e) => set((s) => ((s.calls.turnPassword = e.target.value), s))} />
-                </label>
-              </div>
+              <label className="label">
+                Secret key
+                <input className="field ltr" value={calls.turnSecret} onChange={(e) => set((s) => ((s.calls.turnSecret = e.target.value.trim()), s))} />
+              </label>
+              <p className="muted small">
+                Each signed-in user gets their own temporary TURN login, signed with this key. It stops working when it
+                expires or when the account is blocked; change the key to cut off every login at once.
+              </p>
               <p className="muted small">Open UDP and TCP on the port above, and UDP on the relay port range, in the server firewall.</p>
             </div>
 
