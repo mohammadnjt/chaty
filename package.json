@@ -1,0 +1,13 @@
+{
+  "name": "chaty",
+  "private": true,
+  "description": "Chat app with voice & video calls — Go backend + React (Vite) frontend, packaged for Android with Nitron.",
+  "scripts": {
+    "setup": "npm install --prefix app && cd server && go mod download",
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build --prefix app && cd server && go build -o chaty .",
+    "start": "npm run build && cd server && ./chaty",
+    "start:https": "npm run build && cd server && HTTPS=self ./chaty",
+    "apk": "npm run apk --prefix app"
+  }
+}

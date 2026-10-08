@@ -1,0 +1,160 @@
+import { BellOff, CheckCheck, Check, CirclePlus, MessageSquare, Search } from 'lucide-react';
+import { memo, useMemo, useRef, useState } from 'react';
+import Avatar from '../components/Avatar';
+import Logo from '../components/Logo';
+import Scenery from '../components/Scenery';
+import TabBar from '../components/TabBar';
+import { formatListTime } from '../lib/format';
+import { navigate } from '../lib/router';
+import type { Conversation } from '../lib/types';
+import { activityOf, peerOf, previewOf, titleOf, useChat } from '../store/chat';
+
+export function HeroHeader({ title, children }: { title: string; children?: React.ReactNode }) {
+  return (
+    <header className="hero">
+      <Scenery variant="header" className="hero-bg" />
+      <div className="hero-row">
+        <Logo size={34} />
+        <h1>{title}</h1>
+        <div className="spacer" />
+        {children}
+      </div>
+    </header>
+  );
+}
+
+const ChatRow = memo(function ChatRow({
+  c,
+  me,
+  online,
+  typing,
+}: {
+  c: Conversation;
+  me: number;
+  online: boolean;
+  typing: boolean;
+}) {
+  const peer = c.type === 'direct' ? peerOf(c, me) : null;
+  const title = titleOf(c, me);
+  const last = c.lastMessage;
+  const mine = last?.senderId === me;
+  const read =
+    mine && !!last?.id && Object.entries(c.reads).some(([uid, v]) => Number(uid) !== me && v >= last.id);
+  const sender =
+    last && c.type === 'group' && !mine ? c.members.find((m) => m.id === last.senderId)?.name.split(' ')[0] : null;
+
+  return (
+    <button className="chat-row" onClick={() => navigate(`/chat/${c.id}`)}>
+      <Avatar name={title} src={peer ? peer.avatar : c.avatar} group={c.type === 'group'} online={online} />
+      <div className="chat-row-body">
+        <div className="chat-row-top">
+          <span className="chat-name" dir="auto">
+            {title}
+            {c.muted && <BellOff size={14} className="muted-icon" />}
+          </span>
+          <span className={`chat-time ${c.unread ? 'accent' : ''}`}>{last ? formatListTime(last.createdAt) : ''}</span>
+        </div>
+        <div className="chat-row-bottom">
+          <span className="chat-preview" dir="auto">
+            {typing ? (
+              <span className="typing-text">typing…</span>
+            ) : (
+              <>
+                {mine && last?.id ? (
+                  read ? (
+                    <CheckCheck size={15} className="tick-read" />
+                  ) : (
+                    <Check size={15} />
+                  )
+                ) : null}
+                {sender && <span className="preview-sender">{sender}: </span>}
+                {last ? previewOf(last) : c.type === 'group' ? 'Group created' : ''}
+              </>
+            )}
+          </span>
+          {c.unread > 0 && <span className={`badge ${c.muted ? 'badge-muted' : ''}`}>{c.unread > 99 ? '99+' : c.unread}</span>}
+        </div>
+      </div>
+    </button>
+  );
+});
+
+export default function ChatsScreen() {
+  const me = useChat((s) => s.me);
+  const conversations = useChat((s) => s.conversations);
+  const loaded = useChat((s) => s.loaded);
+  const presence = useChat((s) => s.presence);
+  const typing = useChat((s) => s.typing);
+  const [q, setQ] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const list = useMemo(
+    () =>
+      Object.values(conversations)
+        .filter((c) => c.lastMessage || c.type === 'group')
+        .sort((a, b) => activityOf(b) - activityOf(a)),
+    [conversations],
+  );
+  const query = q.trim().toLowerCase();
+  const shown = query
+    ? list.filter(
+        (c) =>
+          titleOf(c, me).toLowerCase().includes(query) || previewOf(c.lastMessage).toLowerCase().includes(query),
+      )
+    : list;
+  const now = Date.now();
+
+  return (
+    <div className="screen tab-screen">
+      <HeroHeader title="Chats">
+        <button className="icon-btn hero-btn" onClick={() => searchRef.current?.focus()} aria-label="Search">
+          <Search size={22} />
+        </button>
+        <button className="icon-btn hero-btn" onClick={() => navigate('/new')} aria-label="New chat">
+          <CirclePlus size={25} />
+        </button>
+      </HeroHeader>
+
+      <div className="search-wrap">
+        <label className="search">
+          <Search size={18} />
+          <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search conversations..." />
+        </label>
+      </div>
+
+      <div className="scroll list">
+        {!loaded && list.length === 0 ? (
+          Array.from({ length: 6 }, (_, i) => <div key={i} className="chat-row skeleton" />)
+        ) : shown.length === 0 ? (
+          <div className="empty">
+            <MessageSquare size={40} strokeWidth={1.5} />
+            <p>{query ? 'No conversations match your search.' : 'No chats yet. Start one with someone!'}</p>
+            {!query && (
+              <button className="btn btn-primary" onClick={() => navigate('/new')}>
+                Start a chat
+              </button>
+            )}
+          </div>
+        ) : (
+          shown.map((c) => {
+            const peer = c.type === 'direct' ? peerOf(c, me) : null;
+            const isTyping = Object.entries(typing[c.id] ?? {}).some(([uid, t]) => Number(uid) !== me && t.until > now);
+            return (
+              <ChatRow
+                key={c.id}
+                c={c}
+                me={me}
+                online={!!peer && !!presence[peer.id]?.online}
+                typing={isTyping}
+              />
+            );
+          })
+        )}
+        <div className="list-spacer" />
+      </div>
+
+      <Scenery variant="footer" className="footer-scene" />
+      <TabBar active="/" />
+    </div>
+  );
+}

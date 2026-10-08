@@ -1,0 +1,31 @@
+{
+  "name": "Chaty",
+  "packageId": "app.chaty.messenger",
+  "version": "1.0.0",
+  "entry": "web-build/index.html",
+  "orientation": "portrait",
+  "statusBar": true,
+  "permissions": [
+    "INTERNET",
+    "ACCESS_NETWORK_STATE",
+    "CAMERA",
+    "RECORD_AUDIO",
+    "MODIFY_AUDIO_SETTINGS",
+    "VIBRATE",
+    "POST_NOTIFICATIONS",
+    "WAKE_LOCK"
+  ],
+  "icon": {
+    "src": "public/icon.png",
+    "background": "#0a0e24"
+  },
+  "network": {
+    "cleartext": false
+  },
+  "webview": {
+    "backButton": "history"
+  },
+  "splashScreen": {
+    "backgroundColor": "#0a0e24"
+  }
+}
