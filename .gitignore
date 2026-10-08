@@ -7,3 +7,4 @@ server/chaty
 server/.env
 .env
 .DS_Store
+app/android/.tools

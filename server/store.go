@@ -227,6 +227,9 @@ func maskPhone(p string) string {
 
 func publicUser(u *UserRec) User {
 	v := User{ID: u.ID, Name: u.Name, Username: u.Username, Phone: maskPhone(u.Phone), Avatar: u.Avatar, About: u.About, LastSeen: u.LastSeen}
+	if u.Role == "admin" {
+		v.Role = u.Role // shown as "Admin" so people know who they're talking to
+	}
 	if u.HideLastSeen {
 		v.LastSeen, v.hidePresence = 0, true
 	}
@@ -627,9 +630,10 @@ func (s *Store) DeleteUser(id int64) error {
 	return nil
 }
 
-// FindUsers is how people discover each other: your existing contacts
-// (matching by name or ID), plus a stranger only on an exact phone number or
-// exact ID. Nobody can browse the full user list.
+// FindUsers is how people discover each other: your existing contacts and the
+// admins (matching by name or ID), plus a stranger only on an exact phone
+// number or exact ID. Nobody can browse the full user list, except admins, who
+// can look anyone up by part of their phone number, name or ID.
 func (s *Store) FindUsers(q string, viewer int64) []User {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -643,19 +647,54 @@ func (s *Store) FindUsers(q string, viewer int64) []User {
 			out = append(out, s.viewUserL(u, viewer))
 		}
 	}
+	matches := func(u *UserRec) bool {
+		return strings.Contains(strings.ToLower(u.Name), lq) || strings.Contains(strings.ToLower(u.Username), lq)
+	}
+	byName := func(list []*UserRec) {
+		sort.Slice(list, func(i, j int) bool { return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name) })
+	}
 	if q != "" {
 		if u := s.findExactL(q, viewer); u != nil {
 			add(u)
 		}
 	}
-	contacts := s.contactsL(viewer)
-	sort.Slice(contacts, func(i, j int) bool { return strings.ToLower(contacts[i].Name) < strings.ToLower(contacts[j].Name) })
-	for _, u := range contacts {
-		if u.Status != "active" {
-			continue
+	if q != "" && s.isAdminL(viewer) {
+		digits, _ := normalizePhone(q)
+		var found []*UserRec
+		for _, u := range s.users {
+			if u.ID != viewer && u.Status == "active" && ((len(digits) >= 3 && strings.Contains(u.Phone, digits)) || matches(u)) {
+				found = append(found, u)
+			}
 		}
-		if q == "" || strings.Contains(strings.ToLower(u.Name), lq) || strings.Contains(strings.ToLower(u.Username), lq) {
+		byName(found)
+		for i, u := range found {
+			if i == 50 {
+				break
+			}
 			add(u)
+		}
+	}
+	known := append(s.contactsL(viewer), s.adminsL(viewer)...)
+	byName(known)
+	for _, u := range known {
+		if u.Status == "active" && (q == "" || matches(u)) {
+			add(u)
+		}
+	}
+	return out
+}
+
+func (s *Store) isAdminL(uid int64) bool {
+	u := s.users[uid]
+	return u != nil && u.Role == "admin"
+}
+
+// adminsL lists the admins viewer can see: anyone may find and message them.
+func (s *Store) adminsL(viewer int64) []*UserRec {
+	var out []*UserRec
+	for _, u := range s.users {
+		if u.Role == "admin" && u.ID != viewer && u.Status == "active" && !s.blocks[u.ID][viewer] {
+			out = append(out, u)
 		}
 	}
 	return out
@@ -669,7 +708,7 @@ func (s *Store) findExactL(q string, viewer int64) *UserRec {
 	}
 	if u == nil && !strings.HasPrefix(q, "@") {
 		if phone, ok := normalizePhone(q); ok {
-			if p := s.byPhone[phone]; p != nil && !p.HidePhoneSearch {
+			if p := s.byPhone[phone]; p != nil && (!p.HidePhoneSearch || s.isAdminL(viewer)) {
 				u = p
 			}
 		}
@@ -681,11 +720,16 @@ func (s *Store) findExactL(q string, viewer int64) *UserRec {
 }
 
 // CanReach reports whether viewer may start a chat with target: they already
-// share a conversation, or query is the target's exact phone number / ID.
+// share a conversation, one of them is an admin, or query is the target's
+// exact phone number / ID.
 func (s *Store) CanReach(viewer, target int64, query string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.isContactL(viewer, target) {
+		return true
+	}
+	if t := s.users[target]; t != nil && t.ID != viewer && t.Status == "active" && !s.blocks[target][viewer] &&
+		(t.Role == "admin" || s.isAdminL(viewer)) {
 		return true
 	}
 	u := s.findExactL(query, viewer)
@@ -724,6 +768,9 @@ func (s *Store) viewUserL(u *UserRec, viewer int64) User {
 		return fullUser(u)
 	}
 	v := publicUser(u)
+	if s.isAdminL(viewer) {
+		v.Phone = u.Phone // admins see full numbers
+	}
 	if s.blocks[u.ID][viewer] {
 		v.Avatar, v.About, v.LastSeen, v.hidePresence = "", "", 0, true
 	}

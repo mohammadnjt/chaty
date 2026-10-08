@@ -1,7 +1,7 @@
 {
   "name": "Chaty",
   "packageId": "app.chaty.messenger",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "entry": "web-build/index.html",
   "orientation": "portrait",
   "statusBar": true,
@@ -11,6 +11,8 @@
     "CAMERA",
     "RECORD_AUDIO",
     "MODIFY_AUDIO_SETTINGS",
+    "BLUETOOTH",
+    "BLUETOOTH_CONNECT",
     "VIBRATE",
     "POST_NOTIFICATIONS",
     "WAKE_LOCK"

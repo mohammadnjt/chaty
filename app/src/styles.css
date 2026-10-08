@@ -1539,6 +1539,34 @@ button.user-row:active {
   font-size: 13px;
 }
 
+/* reconnecting indicator */
+.conn-bar {
+  position: absolute;
+  top: var(--safe-top);
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 70;
+  overflow: hidden;
+  pointer-events: none;
+  background: rgba(154, 107, 255, 0.22);
+}
+.conn-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent-2), transparent);
+  animation: conn-slide 1.2s ease-in-out infinite;
+}
+@keyframes conn-slide {
+  to {
+    left: 100%;
+  }
+}
+
 .toasts {
   position: absolute;
   left: 0;

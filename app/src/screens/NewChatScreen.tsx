@@ -13,9 +13,11 @@ import { toast } from '../store/toast';
  * (people you already chat with); anyone else is found only by their full
  * phone number or exact @ID.
  */
-function useUserSearch(q: string) {
+export function useUserSearch(q: string, enabled = true) {
   const [users, setUsers] = useState<User[] | null>(null);
   useEffect(() => {
+    setUsers(null);
+    if (!enabled) return;
     let alive = true;
     const t = setTimeout(
       () =>
@@ -32,7 +34,7 @@ function useUserSearch(q: string) {
       alive = false;
       clearTimeout(t);
     };
-  }, [q]);
+  }, [q, enabled]);
   return users;
 }
 
@@ -69,7 +71,23 @@ function SearchField({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 function sub(u: User) {
-  return [u.username && `@${u.username}`, u.about].filter(Boolean).join(' · ') || u.phone;
+  return [u.role === 'admin' && 'Admin', u.username && `@${u.username}`, u.phone].filter(Boolean).join(' · ');
+}
+
+export function UserRow({ u, onClick, disabled }: { u: User; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button className="user-row" onClick={onClick} disabled={disabled}>
+      <Avatar name={u.name} src={u.avatar} size={48} online={u.online} />
+      <div className="user-row-body">
+        <span className="user-name" dir="auto">
+          {u.name}
+        </span>
+        <span className="user-sub" dir="auto">
+          {sub(u)}
+        </span>
+      </div>
+    </button>
+  );
 }
 
 function Results({
@@ -139,19 +157,7 @@ export function NewChatScreen() {
         <Results
           q={q}
           users={users}
-          render={(u) => (
-            <button key={u.id} className="user-row" onClick={() => open(u)} disabled={!!opening}>
-              <Avatar name={u.name} src={u.avatar} size={48} online={u.online} />
-              <div className="user-row-body">
-                <span className="user-name" dir="auto">
-                  {u.name}
-                </span>
-                <span className="user-sub" dir="auto">
-                  {sub(u)}
-                </span>
-              </div>
-            </button>
-          )}
+          render={(u) => <UserRow key={u.id} u={u} onClick={() => open(u)} disabled={!!opening} />}
         />
       </div>
     </div>

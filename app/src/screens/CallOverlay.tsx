@@ -1,5 +1,7 @@
 import {
+  Bluetooth,
   ChevronLeft,
+  Headphones,
   Mic,
   MicOff,
   Phone,
@@ -15,6 +17,7 @@ import {
   acceptCall,
   declineCall,
   hangUp,
+  playbackVolume,
   relayElement,
   setMinimized,
   switchCamera,
@@ -26,6 +29,7 @@ import {
 import Avatar from '../components/Avatar';
 import Scenery from '../components/Scenery';
 import { formatDuration } from '../lib/format';
+import { callAudio } from '../lib/native';
 
 function useNow(active: boolean) {
   const [now, setNow] = useState(Date.now());
@@ -39,12 +43,14 @@ function useNow(active: boolean) {
 
 function StreamVideo({ stream, mirror, className }: { stream: MediaStream; mirror?: boolean; className?: string }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const track = stream.getVideoTracks()[0];
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.srcObject = stream;
+    // Picture only: the sound plays once, through <RemoteAudio>.
+    el.srcObject = track ? new MediaStream([track]) : null;
     void el.play().catch(() => {});
-  }, [stream]);
+  }, [track]);
   return <video ref={ref} className={`${className ?? ''} ${mirror ? 'mirror' : ''}`} autoPlay playsInline muted />;
 }
 
@@ -67,19 +73,45 @@ function RelayVideo() {
 
 /** Remote audio lives outside the call UI so it keeps playing while minimized. */
 export function RemoteAudio() {
-  const remote = useCall((s) => s.remote);
+  // The audio track alone, and the same stream for the whole call: the video
+  // track arriving later doesn't restart playback.
+  const track = useCall((s) => s.remote?.getAudioTracks()[0] ?? null);
   const speaker = useCall((s) => s.speaker);
   const ref = useRef<HTMLAudioElement>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.srcObject = remote;
-    if (remote) void el.play().catch(() => {});
-  }, [remote]);
+    el.srcObject = track ? new MediaStream([track]) : null;
+    if (!track) return;
+    const play = () => {
+      if (el.paused) void el.play().catch(() => {});
+    };
+    play();
+    // If the browser held playback back, the next tap starts it.
+    document.addEventListener('pointerdown', play);
+    return () => document.removeEventListener('pointerdown', play);
+  }, [track]);
   useEffect(() => {
-    if (ref.current) ref.current.volume = speaker ? 1 : 0.45;
+    if (ref.current) ref.current.volume = playbackVolume(speaker);
   }, [speaker]);
-  return <audio ref={ref} autoPlay playsInline hidden />;
+  return <audio ref={ref} className="remote-audio" autoPlay playsInline hidden />;
+}
+
+/** Speaker on/off; in the Android app it also shows when earphones are in use. */
+function SpeakerButton() {
+  const speaker = useCall((s) => s.speaker);
+  const route = useCall((s) => s.audioRoute);
+  const [label, icon] =
+    route === 'bluetooth'
+      ? ['Bluetooth', <Bluetooth size={26} />]
+      : route === 'wired'
+        ? ['Headset', <Headphones size={26} />]
+        : ['Speaker', speaker ? <Volume2 size={26} /> : <Volume1 size={26} />];
+  return (
+    <CallButton label={label} on={route ? route === 'speaker' : speaker} onClick={toggleSpeaker}>
+      {icon}
+    </CallButton>
+  );
 }
 
 /** Live level bars driven by whoever is talking. */
@@ -282,13 +314,14 @@ export default function CallOverlay() {
               <PhoneOff size={30} />
             </CallButton>
             {isVideo ? (
-              <CallButton label={s.cameraOff ? 'Camera on' : 'Camera off'} on={s.cameraOff} onClick={toggleCamera}>
-                {s.cameraOff ? <VideoOff size={26} /> : <Video size={26} />}
-              </CallButton>
+              <>
+                <CallButton label={s.cameraOff ? 'Camera on' : 'Camera off'} on={s.cameraOff} onClick={toggleCamera}>
+                  {s.cameraOff ? <VideoOff size={26} /> : <Video size={26} />}
+                </CallButton>
+                {callAudio.available() && <SpeakerButton />}
+              </>
             ) : (
-              <CallButton label="Speaker" on={s.speaker} onClick={toggleSpeaker}>
-                {s.speaker ? <Volume2 size={26} /> : <Volume1 size={26} />}
-              </CallButton>
+              <SpeakerButton />
             )}
           </>
         )}

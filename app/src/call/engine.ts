@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { isNativeShell } from '../lib/config';
 import { uid } from '../lib/format';
-import { notify, requestMediaPermission } from '../lib/native';
+import { callAudio, notify, requestMediaPermission } from '../lib/native';
 import { socket } from '../lib/socket';
 import { playHangup, playRingback, playRingtone, stopTones } from '../lib/sounds';
 import type { CallKind, User } from '../lib/types';
@@ -34,6 +34,7 @@ export interface CallState {
   peerCameraOff: boolean;
   minimized: boolean;
   relay: boolean; // media goes through the server
+  audioRoute: string; // Android app: speaker | earpiece | wired | bluetooth
 }
 
 const idle: CallState = {
@@ -55,6 +56,7 @@ const idle: CallState = {
   peerCameraOff: false,
   minimized: false,
   relay: false,
+  audioRoute: '',
 };
 
 export const useCall = create<CallState>(() => idle);
@@ -70,6 +72,7 @@ let failTimer: number | undefined;
 let resumeTimer: number | undefined;
 let restarts = 0;
 let p2pTimer: number | undefined;
+let reportTimers: number[] = [];
 let relay: MediaRelay | null = null;
 
 export const relayElement = () => relay?.element ?? null;
@@ -118,6 +121,20 @@ function sendMediaState() {
 
 const callSettings = () => useConfig.getState().calls;
 
+/** In the Android app the route (earpiece/speaker) sets loudness; elsewhere "speaker off" just plays quieter. */
+export const playbackVolume = (speaker: boolean) => (callAudio.available() || speaker ? 1 : 0.45);
+
+// Media is ready: let the Android app route the sound (no-op elsewhere).
+function startAudio(kind: CallKind) {
+  set({ speaker: callAudio.available() ? kind === 'video' : true });
+  callAudio.start(kind === 'video');
+}
+
+callAudio.onRoute((route) => {
+  if (!get().callId) return;
+  set({ audioRoute: route, ...(route === 'speaker' ? { speaker: true } : route === 'earpiece' ? { speaker: false } : {}) });
+});
+
 /** Use the server relay right away (admin setting, or no WebRTC in this browser). */
 function wantsRelayOnly() {
   return callSettings().mode === 'relay' || typeof RTCPeerConnection === 'undefined';
@@ -138,7 +155,7 @@ function startRelay() {
   // Smaller video keeps the relay smooth on slow links.
   local.getVideoTracks().forEach((t) => void t.applyConstraints({ width: 640, height: 480, frameRate: 20 }).catch(() => {}));
   relay = new MediaRelay(local, kind === 'video', (r: RelaySignal) => signal({ relay: r }), markActive);
-  relay.setVolume(get().speaker ? 1 : 0.45);
+  relay.setVolume(playbackVolume(get().speaker));
   set({ relay: true, remote: null, status: get().phase === 'active' ? '' : 'Connecting via server…' });
   relay.startSending();
   sendMediaState();
@@ -204,6 +221,7 @@ function markActive() {
   clearTimeout(failTimer);
   clearTimeout(p2pTimer);
   const s = get();
+  if (s.phase === 'connecting') scheduleReports();
   if (s.phase === 'connecting' || s.phase === 'active') {
     set({ phase: 'active', status: '', startedAt: s.startedAt ?? Date.now() });
   }
@@ -272,6 +290,9 @@ function finish(callId: string, reason: string | null, opts: { silent?: boolean;
   clearTimeout(failTimer);
   clearTimeout(resumeTimer);
   clearTimeout(p2pTimer);
+  reportTimers.forEach(clearTimeout);
+  reportTimers = [];
+  callAudio.stop();
   stopTones();
   pc?.close();
   pc = null;
@@ -322,6 +343,7 @@ export async function startCall(conversationId: number, peer: User, kind: CallKi
       return;
     }
     set({ local, cameraOff: kind === 'video' && local.getVideoTracks().length === 0 });
+    startAudio(kind);
     if (!socket.send('call:invite', { callId, conversationId, kind })) finish(callId, 'offline');
   } catch (e) {
     finish(callId, 'failed', { text: e instanceof CallError ? e.message : 'Call failed' });
@@ -340,6 +362,7 @@ export async function acceptCall() {
       return;
     }
     set({ local, cameraOff: kind === 'video' && local.getVideoTracks().length === 0 });
+    startAudio(kind);
     if (wantsRelayOnly()) {
       socket.send('call:accept', { callId });
       startRelay();
@@ -394,7 +417,8 @@ export function toggleCamera() {
 
 export function toggleSpeaker() {
   const speaker = !get().speaker;
-  relay?.setVolume(speaker ? 1 : 0.45);
+  callAudio.setSpeaker(speaker);
+  relay?.setVolume(playbackVolume(speaker));
   set({ speaker });
 }
 export const setMinimized = (minimized: boolean) => set({ minimized });
@@ -429,6 +453,72 @@ export async function switchCamera() {
   }
   const switched = track.getSettings().facingMode;
   set({ facing: switched === 'environment' || (!switched && next === 'environment') ? 'environment' : 'user', local: new MediaStream(local.getTracks()) });
+}
+
+// ---------- call reports ----------
+// A few seconds into each call, and again later, both sides send the server a
+// one-line report (how media travels, whether the other side's audio arrives
+// and plays) so "I can't hear them" can be traced from the server log.
+
+function scheduleReports() {
+  reportTimers.forEach(clearTimeout);
+  reportTimers = [8, 45].map((sec) => window.setTimeout(() => void sendReport(`${sec}s`), sec * 1000));
+}
+
+function appKind() {
+  if (isNativeShell) return callAudio.available() ? 'apk' : 'apk-unpatched';
+  return window.matchMedia?.('(display-mode: standalone)').matches ? 'pwa' : 'web';
+}
+
+function device() {
+  const ua = navigator.userAgent;
+  const os = ua.match(/Android [\d.]+(; [^;)]+)?|iPhone OS [\d_]+|iPad; CPU OS [\d_]+|Windows NT [\d.]+|Mac OS X [\d_]+|Linux/)?.[0];
+  const browser = ua.match(/(Edg|OPR|SamsungBrowser|CriOS|FxiOS|Firefox|Chrome|Version)\/\d+/)?.[0];
+  return [os, browser].filter(Boolean).join(' ');
+}
+
+const playState = (el: HTMLMediaElement | null) =>
+  el ? `${el.paused ? 'paused' : 'playing'}${el.muted ? ' muted' : ''} vol=${el.volume}${el.srcObject || el.src ? '' : ' empty'}` : 'none';
+
+async function sendReport(at: string) {
+  const s = get();
+  if (!s.callId || s.phase !== 'active') return;
+  const mic = s.local?.getAudioTracks()[0];
+  const d: Record<string, unknown> = {
+    callId: s.callId,
+    at,
+    kind: s.kind,
+    dir: s.direction,
+    app: appKind(),
+    device: device(),
+    route: s.audioRoute || undefined,
+    mic: mic ? `${mic.readyState}${mic.enabled ? '' : ' off'}${mic.muted ? ' muted' : ''}` : 'none',
+  };
+  if (relay) {
+    const el = relay.element as HTMLVideoElement & { webkitAudioDecodedByteCount?: number };
+    d.path = 'server';
+    d.play = playState(el);
+    d.heardBytes = el.webkitAudioDecodedByteCount;
+  } else if (pc) {
+    d.play = playState(document.querySelector('audio.remote-audio'));
+    try {
+      const stats = await pc.getStats();
+      const byId = new Map<string, any>();
+      let pairId = '';
+      stats.forEach((r: any) => {
+        byId.set(r.id, r);
+        if (r.type === 'transport' && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId;
+        if (r.type === 'inbound-rtp' && r.kind === 'audio') d.heard = { bytes: r.bytesReceived, energy: Number((r.totalAudioEnergy ?? 0).toFixed(3)) };
+        if (r.type === 'outbound-rtp' && r.kind === 'audio') d.sentBytes = r.bytesSent;
+      });
+      if (!pairId) stats.forEach((r: any) => r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded' && (pairId = r.id));
+      const pair = byId.get(pairId);
+      d.path = pair ? `${byId.get(pair.localCandidateId)?.candidateType}>${byId.get(pair.remoteCandidateId)?.candidateType}` : pc.connectionState;
+    } catch {
+      d.path = 'no-stats';
+    }
+  }
+  socket.send('call:diag', d);
 }
 
 // ---------- signaling events ----------

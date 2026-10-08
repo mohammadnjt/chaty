@@ -4,10 +4,13 @@ import Avatar from '../components/Avatar';
 import Logo from '../components/Logo';
 import Scenery from '../components/Scenery';
 import TabBar from '../components/TabBar';
+import { api, errorText } from '../lib/api';
 import { formatListTime } from '../lib/format';
 import { navigate } from '../lib/router';
-import type { Conversation } from '../lib/types';
-import { activityOf, peerOf, previewOf, titleOf, useChat } from '../store/chat';
+import type { Conversation, User } from '../lib/types';
+import { activityOf, addConversation, peerOf, previewOf, titleOf, useChat } from '../store/chat';
+import { toast } from '../store/toast';
+import { UserRow, useUserSearch } from './NewChatScreen';
 
 export function HeroHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
@@ -104,6 +107,25 @@ export default function ChatsScreen() {
     : list;
   const now = Date.now();
 
+  // Typing a phone number or @ID here also finds people, not just chats.
+  const found = useUserSearch(q, !!query);
+  const people = (found ?? []).filter((u) => !shown.some((c) => c.type === 'direct' && peerOf(c, me)?.id === u.id));
+  const [opening, setOpening] = useState(0);
+
+  async function openUser(u: User) {
+    setOpening(u.id);
+    try {
+      const c = await api.openDirect(u.id, q.trim());
+      addConversation(c);
+      setQ('');
+      navigate(`/chat/${c.id}`);
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setOpening(0);
+    }
+  }
+
   return (
     <div className="screen tab-screen">
       <HeroHeader title="Chats">
@@ -118,17 +140,21 @@ export default function ChatsScreen() {
       <div className="search-wrap">
         <label className="search">
           <Search size={18} />
-          <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search conversations..." />
+          <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chats, phone or @ID" />
         </label>
       </div>
 
       <div className="scroll list">
         {!loaded && list.length === 0 ? (
           Array.from({ length: 6 }, (_, i) => <div key={i} className="chat-row skeleton" />)
-        ) : shown.length === 0 ? (
+        ) : shown.length === 0 && (!query || (found && people.length === 0)) ? (
           <div className="empty">
             <MessageSquare size={40} strokeWidth={1.5} />
-            <p>{query ? 'No conversations match your search.' : 'No chats yet. Start one with someone!'}</p>
+            <p>
+              {query
+                ? 'No chats or people found. People are found by their full phone number or exact @ID.'
+                : 'No chats yet. Start one with someone!'}
+            </p>
             {!query && (
               <button className="btn btn-primary" onClick={() => navigate('/new')}>
                 Start a chat
@@ -149,6 +175,14 @@ export default function ChatsScreen() {
               />
             );
           })
+        )}
+        {query && people.length > 0 && (
+          <>
+            <h3 className="section-title">People</h3>
+            {people.map((u) => (
+              <UserRow key={u.id} u={u} onClick={() => void openUser(u)} disabled={!!opening} />
+            ))}
+          </>
         )}
         <div className="list-spacer" />
       </div>

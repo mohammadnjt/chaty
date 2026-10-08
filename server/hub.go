@@ -315,6 +315,8 @@ func (h *Hub) handle(c *Client, in inbound) {
 		h.callSignal(c, in.Data)
 	case "call:resume":
 		h.callResume(c, in.Data)
+	case "call:diag":
+		h.callDiag(c, in.Data)
 	}
 }
 

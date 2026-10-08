@@ -227,6 +227,29 @@ func (h *Hub) callSignal(c *Client, raw json.RawMessage) {
 	}
 }
 
+// callDiag logs a participant's short report on how their call is going (how
+// media travels, whether the other side's audio arrives and plays), so a
+// "can't hear" report can be traced from the server log.
+func (h *Hub) callDiag(c *Client, raw json.RawMessage) {
+	var d struct {
+		CallID string `json:"callId"`
+	}
+	if json.Unmarshal(raw, &d) != nil {
+		return
+	}
+	h.mu.Lock()
+	call := h.calls[d.CallID]
+	ok := call != nil && (call.caller == c.userID || call.callee == c.userID)
+	h.mu.Unlock()
+	if !ok {
+		return
+	}
+	if len(raw) > 600 {
+		raw = raw[:600]
+	}
+	log.Printf("call %s: report from %d: %s", shortID(d.CallID), c.userID, raw)
+}
+
 // finishCall tears a call down and tells everyone still involved. by is the
 // connection that caused it (nil for timeouts) and is not notified.
 func (h *Hub) finishCall(id string, by *Client, reason string) {

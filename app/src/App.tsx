@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Logo from './components/Logo';
 import Scenery from './components/Scenery';
 import { matchPath, usePath } from './lib/router';
+import { socket } from './lib/socket';
 import { unlockAudio } from './lib/sounds';
 import AdminScreen from './screens/AdminScreen';
 import AuthScreen from './screens/AuthScreen';
@@ -26,6 +27,27 @@ function Toasts() {
       ))}
     </div>
   );
+}
+
+/** A thin moving line along the top while the app is reconnecting. */
+function ConnectionBar() {
+  const [down, setDown] = useState(false);
+  useEffect(() => {
+    let t: number | undefined;
+    const update = (connected: boolean) => {
+      clearTimeout(t);
+      // Don't flash it for a blip.
+      if (connected) setDown(false);
+      else t = window.setTimeout(() => setDown(true), 800);
+    };
+    update(socket.connected);
+    const off = socket.onStatus(update);
+    return () => {
+      off();
+      clearTimeout(t);
+    };
+  }, []);
+  return down ? <div className="conn-bar" role="status" aria-label="Connecting…" /> : null;
 }
 
 function Screen({ path }: { path: string }) {
@@ -71,6 +93,7 @@ export default function App() {
       ) : (
         <>
           <Screen path={path} />
+          <ConnectionBar />
           <CallOverlay />
           <RemoteAudio />
         </>
