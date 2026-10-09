@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 )
@@ -34,6 +35,8 @@ type activeCall struct {
 	answeredAt int64
 	timer      *time.Timer // ring timeout
 	grace      *time.Timer // running while one side is reconnecting
+	callerName string
+	pushed     bool // the callee was woken by a push notification
 }
 
 func shortID(id string) string {
@@ -88,6 +91,10 @@ func (h *Hub) callInvite(c *Client, raw json.RawMessage) {
 		return
 	}
 
+	// Ring when the callee has the app open somewhere, or a phone a push can wake.
+	pushable := h.push.HasDevices(callee)
+	calleeActive := h.isActive(callee)
+
 	h.mu.Lock()
 	if _, exists := h.calls[d.CallID]; exists {
 		h.mu.Unlock()
@@ -100,7 +107,7 @@ func (h *Hub) callInvite(c *Client, raw json.RawMessage) {
 	}
 	_, calleeBusy := h.inCall[callee]
 	calleeOnline := len(h.clients[callee]) > 0
-	if calleeBusy || !calleeOnline {
+	if calleeBusy || (!calleeOnline && !pushable) {
 		h.mu.Unlock()
 		status, reason := "missed", "unavailable"
 		if calleeBusy {
@@ -111,7 +118,8 @@ func (h *Hub) callInvite(c *Client, raw json.RawMessage) {
 		fail(reason)
 		return
 	}
-	call := &activeCall{id: d.CallID, convID: d.ConversationID, caller: c.userID, callee: callee, kind: d.Kind, callerConn: c}
+	call := &activeCall{id: d.CallID, convID: d.ConversationID, caller: c.userID, callee: callee, kind: d.Kind, callerConn: c,
+		callerName: caller.Name, pushed: pushable && !calleeActive}
 	h.calls[call.id] = call
 	h.inCall[c.userID] = call.id
 	h.inCall[callee] = call.id
@@ -128,6 +136,35 @@ func (h *Hub) callInvite(c *Client, raw json.RawMessage) {
 		"kind":           call.kind,
 		"from":           caller,
 	})
+	if call.pushed {
+		what := "Incoming voice call"
+		if call.kind == "video" {
+			what = "Incoming video call"
+		}
+		h.push.Notify(callee, map[string]string{
+			"type": "call", "title": caller.Name, "body": what, "tag": "call-" + call.id,
+			"url": fmt.Sprintf("/app/#/chat/%d", call.convID), "callId": call.id,
+		}, ringTimeout)
+	}
+}
+
+// resendRinging gives a device that connects while a call to it is still
+// ringing (say, opened from the call notification) the incoming call too.
+func (h *Hub) resendRinging(c *Client) {
+	h.mu.Lock()
+	call := h.calls[h.inCall[c.userID]]
+	h.mu.Unlock()
+	if call == nil || call.callee != c.userID || call.answeredAt > 0 {
+		return
+	}
+	caller, ok := h.store.ViewUser(call.caller, c.userID)
+	if !ok {
+		return
+	}
+	if h.configFor != nil {
+		c.emit("config", h.configFor(c.userID))
+	}
+	c.emit("call:incoming", map[string]any{"callId": call.id, "conversationId": call.convID, "kind": call.kind, "from": caller})
 }
 
 func (h *Hub) callAccept(c *Client, raw json.RawMessage) {
@@ -299,6 +336,15 @@ func (h *Hub) finishCall(id string, by *Client, reason string) {
 			o.emit("call:ended", map[string]any{"callId": id, "reason": reason})
 		}
 	}
+
+	// Take the ringing notification down; it becomes "missed call" unless answered or declined.
+	if call.pushed {
+		data := map[string]string{"type": "call-end", "tag": "call-" + id, "url": fmt.Sprintf("/app/#/chat/%d", call.convID)}
+		if status == "missed" {
+			data["title"], data["body"] = call.callerName, "Missed call"
+		}
+		h.push.Notify(call.callee, data, 24*time.Hour)
+	}
 }
 
 // dropCallsOf handles a closed connection: a ringing call it started ends;
@@ -352,6 +398,11 @@ func (h *Hub) callResume(c *Client, raw json.RawMessage) {
 	}
 	h.mu.Lock()
 	call := h.calls[d.CallID]
+	if call != nil && call.answeredAt == 0 && c.userID == call.callee {
+		// Still ringing: the callee reconnected while answering, and its accept follows.
+		h.mu.Unlock()
+		return
+	}
 	if call == nil || call.answeredAt == 0 || (c.userID != call.caller && c.userID != call.callee) {
 		h.mu.Unlock()
 		c.emit("call:ended", map[string]any{"callId": d.CallID, "reason": "gone"})

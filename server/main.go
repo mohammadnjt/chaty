@@ -194,6 +194,8 @@ func main() {
 
 	srv := &Server{cfg: cfg, store: store, hub: newHub(store, settings), settings: settings, turn: turn}
 	srv.hub.configFor = srv.clientConfigData
+	srv.push = newPusher(env("FIREBASE_CREDENTIALS", filepath.Join(cfg.DataDir, "firebase-service-account.json")), store)
+	srv.hub.push = srv.push
 	go srv.expireStories()
 	httpSrv := &http.Server{Handler: srv.routes(), ReadHeaderTimeout: 15 * time.Second}
 	errc := make(chan error, 2)

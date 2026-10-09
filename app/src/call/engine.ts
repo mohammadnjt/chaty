@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { isNativeShell } from '../lib/config';
 import { uid } from '../lib/format';
-import { callAudio, notify, requestMediaPermission } from '../lib/native';
+import { callAudio, ensureMediaPermission, notify, requestMediaPermission } from '../lib/native';
 import { socket } from '../lib/socket';
 import { playHangup, playRingback, playRingtone, releaseCallTones, stopTones } from '../lib/sounds';
 import type { CallKind, User } from '../lib/types';
@@ -180,9 +180,50 @@ function armP2PTimeout() {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Sends now, or as soon as the connection is back (for a few seconds). */
+function sendSoon(type: string, data: unknown): Promise<boolean> {
+  if (socket.send(type, data)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const off = socket.onStatus((up) => {
+      if (!up) return;
+      off();
+      clearTimeout(timer);
+      resolve(socket.send(type, data));
+    });
+    const timer = window.setTimeout(() => {
+      off();
+      resolve(false);
+    }, 8000);
+  });
+}
+
+/** getUserMedia that gives up instead of waiting forever (and lets go of a stream that starts too late). */
+function getMedia(constraints: MediaStreamConstraints, ms = 15_000): Promise<MediaStream> {
+  const req = navigator.mediaDevices.getUserMedia(constraints);
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new DOMException("The microphone didn't start", 'TimeoutError'));
+      req.then((s) => s.getTracks().forEach((t) => t.stop()), () => {});
+    }, ms);
+    req.then(
+      (s) => {
+        clearTimeout(timer);
+        resolve(s);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 async function acquireMedia(kind: CallKind, callId: string): Promise<MediaStream> {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
     throw new CallError('Calls need a secure connection: open the app over https:// (or localhost).');
+  }
+  if (!(await ensureMediaPermission(kind === 'video'))) {
+    throw new CallError(`Allow microphone${kind === 'video' ? ' and camera' : ''} access to make calls.`);
   }
   const audio: MediaTrackConstraints = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
   const video: MediaTrackConstraints = { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } };
@@ -191,18 +232,19 @@ async function acquireMedia(kind: CallKind, callId: string): Promise<MediaStream
   let asked = false;
   for (;;) {
     try {
-      return await navigator.mediaDevices.getUserMedia({ audio, video: kind === 'video' ? video : false });
+      return await getMedia({ audio, video: kind === 'video' ? video : false });
     } catch (err) {
       const name = (err as DOMException)?.name;
-      if (kind === 'video' && (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'NotReadableError')) {
+      const noCamera = ['NotFoundError', 'OverconstrainedError', 'NotReadableError', 'TimeoutError'].includes(name);
+      if (kind === 'video' && noCamera) {
         // No usable camera: carry on with voice only.
         try {
-          return await navigator.mediaDevices.getUserMedia({ audio });
+          return await getMedia({ audio });
         } catch {
           /* fall through */
         }
       }
-      if (isNativeShell && Date.now() < deadline && get().callId === callId) {
+      if (isNativeShell && name !== 'TimeoutError' && Date.now() < deadline && get().callId === callId) {
         if (!asked) requestMediaPermission();
         asked = true;
         await sleep(1000);
@@ -212,7 +254,7 @@ async function acquireMedia(kind: CallKind, callId: string): Promise<MediaStream
         throw new CallError(`Allow microphone${kind === 'video' ? ' and camera' : ''} access to make calls.`);
       }
       if (name === 'NotFoundError') throw new CallError('No microphone found on this device.');
-      throw new CallError("Couldn't start your microphone. Is another app using it?");
+      throw new CallError("Couldn't start your microphone. Is another app using it?", { cause: err });
     }
   }
 }
@@ -356,24 +398,26 @@ export async function acceptCall() {
   if (!callId || phase !== 'incoming') return;
   stopTones();
   set({ phase: 'connecting', status: 'Connecting…' });
+  const started = Date.now();
   try {
     const local = await acquireMedia(kind, callId);
     if (get().callId !== callId) {
       local.getTracks().forEach((t) => t.stop());
       return;
     }
+    if (Date.now() - started > 4000) reportProblem(callId, `media took ${Date.now() - started}ms`);
     set({ local, cameraOff: kind === 'video' && local.getVideoTracks().length === 0 });
     startAudio(kind);
-    if (wantsRelayOnly()) {
-      socket.send('call:accept', { callId });
-      startRelay();
-    } else {
-      await createPeer(local);
-      socket.send('call:accept', { callId });
-      armP2PTimeout();
+    if (!wantsRelayOnly()) await createPeer(local);
+    if (!(await sendSoon('call:accept', { callId }))) {
+      finish(callId, 'offline');
+      return;
     }
+    if (wantsRelayOnly()) startRelay();
+    else armP2PTimeout();
   } catch (e) {
-    const why = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    const why = e instanceof Error ? `${e.name}: ${e.message}${e.cause ? ` (${String(e.cause)})` : ''}` : String(e);
+    reportProblem(callId, 'answer failed', e);
     socket.send('call:reject', { callId, reason: `could not start: ${why}` });
     finish(callId, 'failed', { text: e instanceof CallError ? e.message : 'Call failed' });
   }
@@ -481,6 +525,18 @@ function device() {
 const playState = (el: HTMLMediaElement | null) =>
   el ? `${el.paused ? 'paused' : 'playing'}${el.muted ? ' muted' : ''} vol=${el.volume}${el.srcObject || el.src ? '' : ' empty'}` : 'none';
 
+/** A call that didn't get going tells the server why (see the call reports above). */
+function reportProblem(callId: string, at: string, e?: unknown) {
+  socket.send('call:diag', {
+    callId,
+    at,
+    error: e === undefined ? undefined : e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+    app: appKind(),
+    device: device(),
+    native: callAudio.debug() || undefined,
+  });
+}
+
 async function sendReport(at: string) {
   const s = get();
   if (!s.callId || s.phase !== 'active') return;
@@ -533,6 +589,7 @@ socket.on('call:ringing', (d: { callId: string }) => {
 
 socket.on('call:incoming', (d: { callId: string; conversationId: number; kind: CallKind; from: User }) => {
   const cur = get();
+  if (d.callId === cur.callId) return; // the server re-sent it after a reconnect
   if (cur.phase !== 'idle' && cur.phase !== 'ended') {
     socket.send('call:reject', { callId: d.callId, reason: `busy here (${cur.phase})` });
     return;

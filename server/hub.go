@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -43,6 +44,7 @@ type Client struct {
 	media    chan []byte // relayed call media (binary), dropped when the peer can't keep up
 	done     chan struct{}
 	stopOnce sync.Once
+	hidden   atomic.Bool // the app is in the background on this device
 }
 
 func (c *Client) stop() {
@@ -143,6 +145,7 @@ type Hub struct {
 	settings *SettingsStore
 	// configFor builds a user's client config (set by the server).
 	configFor func(userID int64) map[string]any
+	push      *Pusher
 
 	mu      sync.Mutex
 	clients map[int64]map[*Client]struct{}
@@ -186,6 +189,7 @@ func (h *Hub) serve(w http.ResponseWriter, r *http.Request, user UserRec) {
 		}
 	}
 	c.emit("hello", map[string]any{"online": online})
+	h.resendRinging(c)
 	if first {
 		h.sendToUsers(h.store.PresenceAudience(user.ID), "presence", map[string]any{"userId": user.ID, "online": true})
 	}
@@ -261,6 +265,17 @@ func (h *Hub) sendToUsers(userIDs []int64, typ string, data any) {
 	}
 }
 
+// isActive reports whether the user has the app open in front of them on
+// some device; if not, they get push notifications.
+func (h *Hub) isActive(uid int64) bool {
+	for _, c := range h.connsOf(uid) {
+		if !c.hidden.Load() {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Hub) onlineUsers() []int64 {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -317,6 +332,13 @@ func (h *Hub) handle(c *Client, in inbound) {
 		h.callResume(c, in.Data)
 	case "call:diag":
 		h.callDiag(c, in.Data)
+	case "visibility":
+		var d struct {
+			Hidden bool `json:"hidden"`
+		}
+		if json.Unmarshal(in.Data, &d) == nil {
+			c.hidden.Store(d.Hidden)
+		}
 	}
 }
 

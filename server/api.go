@@ -24,6 +24,7 @@ type Server struct {
 	hub      *Hub
 	settings *SettingsStore
 	turn     *turnManager
+	push     *Pusher // nil when push notifications aren't set up
 }
 
 func (s *Server) routes() http.Handler {
@@ -62,6 +63,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/upload", s.authed(s.upload))
 	s.adminRoutes(mux)
 	s.storyRoutes(mux)
+	s.pushRoutes(mux)
 	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
 		u, ok := s.store.UserByToken(r.URL.Query().Get("token"))
 		if !ok {
@@ -689,6 +691,7 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request, me UserRec
 // publish sends a new message to every member of its conversation.
 func (s *Server) publish(msg Message) {
 	s.hub.sendToUsers(s.store.MemberIDs(msg.ConversationID), "message", msg)
+	s.pushMessage(msg)
 }
 
 func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, me UserRec) {

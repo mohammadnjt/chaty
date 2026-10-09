@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
     private static final String ASSET_HOST = "appassets.androidplatform.net";
     private static final String ASSET_PREFIX = "www/";
     private static final int FILE_REQUEST = 201;
+    private static final int PERMISSIONS_REQUEST = 202;
     private String backButtonMode = "history";
     private boolean clearCacheOnStart = false;
     private FrameLayout rootLayout;
@@ -132,6 +133,7 @@ public class MainActivity extends Activity {
         this.webView.addJavascriptInterface(new NitronJSInterface(), "Nitron");
         this.callAudio = new CallAudio(this, this.webView);
         this.webView.addJavascriptInterface(this.callAudio, "ChatyAudio");
+        this.webView.addJavascriptInterface(new ChatyAppInterface(), "ChatyApp");
     }
 
     // The WebView's own picker only honours the first type in accept="image/*,video/*".
@@ -194,6 +196,52 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode == CallAudio.BLUETOOTH_REQUEST && callAudio != null) callAudio.onPermissionResult();
+        if (requestCode == PERMISSIONS_REQUEST) dispatch("chaty-permissions", "done");
+    }
+
+    // The page learns when the app goes to the background and back: the
+    // server sends notifications only to devices not showing the app.
+    @Override
+    protected void onStart() {
+        super.onStart();
+        dispatch("chaty-app-state", "foreground");
+    }
+
+    @Override
+    protected void onStop() {
+        dispatch("chaty-app-state", "background");
+        super.onStop();
+    }
+
+    private void dispatch(String event, String detail) {
+        if (webView == null) return;
+        webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('" + event + "',{detail:'" + detail + "'}))", null);
+    }
+
+    /** window.ChatyApp: Android permissions for the page (names like "RECORD_AUDIO,CAMERA"). */
+    private class ChatyAppInterface {
+        @JavascriptInterface
+        public boolean hasPermissions(String names) {
+            if (Build.VERSION.SDK_INT < 23) return true;
+            for (String n : names.split(",")) {
+                if (checkSelfPermission("android.permission." + n.trim()) != PackageManager.PERMISSION_GRANTED) return false;
+            }
+            return true;
+        }
+
+        /** Shows Android's prompt; the page hears back through a "chaty-permissions" event. */
+        @JavascriptInterface
+        public void requestPermissions(String names) {
+            final String[] list = names.split(",");
+            for (int i = 0; i < list.length; i++) list[i] = "android.permission." + list[i].trim();
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (Build.VERSION.SDK_INT >= 23) MainActivity.this.requestPermissions(list, PERMISSIONS_REQUEST);
+                    else dispatch("chaty-permissions", "done");
+                }
+            });
+        }
     }
 
     private class NitronWebViewClient extends WebViewClient {

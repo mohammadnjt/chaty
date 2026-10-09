@@ -3205,3 +3205,22 @@ code {
 .story-noviews {
   padding: 12px 18px;
 }
+
+/* ---------- push notifications offer ---------- */
+.push-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 8px 12px 14px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.35;
+}
+.push-banner > svg {
+  flex: none;
+  color: var(--accent-2);
+}
+.push-banner span {
+  flex: 1;
+}
+

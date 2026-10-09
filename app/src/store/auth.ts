@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { api, ApiError, setApiToken, setUnauthorizedHandler, type AuthResponse } from '../lib/api';
-import { needsServerUrl, storage } from '../lib/config';
+import { isNativeShell, needsServerUrl, storage } from '../lib/config';
+import { ensureMediaPermission } from '../lib/native';
+import { disablePush, enablePush } from '../lib/push';
 import { navigate } from '../lib/router';
 import { socket } from '../lib/socket';
 import type { Message, User } from '../lib/types';
@@ -44,6 +46,14 @@ function signedIn(token: string, me: User) {
   useAuth.setState({ status: 'ready', me });
   socket.connect(token);
   void loadConfig();
+  // Keep this browser's push registration fresh (no prompt here).
+  void enablePush(false).catch(() => {});
+  // The Android app asks for the microphone and camera once up front, so the
+  // first call doesn't stop for Android's prompt.
+  if (isNativeShell && !storage.get('chaty.askedMedia')) {
+    storage.set('chaty.askedMedia', '1');
+    window.setTimeout(() => void ensureMediaPermission(true), 1500);
+  }
   loadConversations().catch(() => {});
   if (me.role === 'admin') refreshPendingCount();
 }
@@ -102,6 +112,7 @@ function clearSession() {
 }
 
 export async function logout() {
+  await disablePush();
   await api.logout().catch(() => {});
   clearSession();
 }

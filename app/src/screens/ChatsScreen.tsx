@@ -1,11 +1,13 @@
-import { BellOff, CheckCheck, Check, CirclePlus, MessageSquare, Search } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, Check, CirclePlus, MessageSquare, Search, X } from 'lucide-react';
 import { memo, useMemo, useRef, useState } from 'react';
 import Avatar from '../components/Avatar';
 import Logo from '../components/Logo';
 import Scenery from '../components/Scenery';
 import TabBar from '../components/TabBar';
 import { api, errorText } from '../lib/api';
+import { storage } from '../lib/config';
 import { formatListTime } from '../lib/format';
+import { enablePush, pushAvailable, pushPermission } from '../lib/push';
 import { navigate } from '../lib/router';
 import type { Conversation, User } from '../lib/types';
 import { activityOf, addConversation, peerOf, previewOf, titleOf, useChat } from '../store/chat';
@@ -82,6 +84,36 @@ const ChatRow = memo(function ChatRow({
   );
 });
 
+/** Offers push notifications once, in browsers that support them. */
+function PushBanner() {
+  const [show, setShow] = useState(() => pushAvailable() && pushPermission() === 'default' && !storage.get('chaty.pushOffered'));
+  if (!show) return null;
+  const close = () => {
+    storage.set('chaty.pushOffered', '1');
+    setShow(false);
+  };
+  async function turnOn() {
+    close();
+    try {
+      toast((await enablePush(true)) ? 'Notifications are on' : 'Notifications are off. Turn them on in Settings any time.');
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
+  return (
+    <div className="card push-banner">
+      <Bell size={20} />
+      <span>Get notified about new messages and calls, even with Chaty closed.</span>
+      <button className="chip-btn" onClick={() => void turnOn()}>
+        Turn on
+      </button>
+      <button className="icon-btn" onClick={close} aria-label="Not now">
+        <X size={18} />
+      </button>
+    </div>
+  );
+}
+
 export default function ChatsScreen() {
   const me = useChat((s) => s.me);
   const conversations = useChat((s) => s.conversations);
@@ -145,6 +177,7 @@ export default function ChatsScreen() {
       </div>
 
       <div className="scroll list">
+        {!query && <PushBanner />}
         {!loaded && list.length === 0 ? (
           Array.from({ length: 6 }, (_, i) => <div key={i} className="chat-row skeleton" />)
         ) : shown.length === 0 && (!query || (found && people.length === 0)) ? (

@@ -276,21 +276,22 @@ func containsID(list []int64, id int64) bool {
 type Store struct {
 	mu sync.RWMutex
 
-	users     map[int64]*UserRec
-	byPhone   map[string]*UserRec
-	sessions  map[string]*SessionRec
-	convs     map[int64]*ConvRec
-	direct    map[string]int64
-	members   map[int64]map[int64]*MemberRec
-	userConvs map[int64]map[int64]bool
-	msgs      map[int64][]*MsgRec
-	msgByID   map[int64]*MsgRec
-	clientIdx map[string]*MsgRec
-	calls     map[string]*CallRec
-	userCalls map[int64][]*CallRec
-	usernames map[string]*UserRec      // lower-case username -> user
-	blocks    map[int64]map[int64]bool // blocker -> blocked users
-	stories   map[int64]*StoryRec
+	users      map[int64]*UserRec
+	byPhone    map[string]*UserRec
+	sessions   map[string]*SessionRec
+	convs      map[int64]*ConvRec
+	direct     map[string]int64
+	members    map[int64]map[int64]*MemberRec
+	userConvs  map[int64]map[int64]bool
+	msgs       map[int64][]*MsgRec
+	msgByID    map[int64]*MsgRec
+	clientIdx  map[string]*MsgRec
+	calls      map[string]*CallRec
+	userCalls  map[int64][]*CallRec
+	usernames  map[string]*UserRec      // lower-case username -> user
+	blocks     map[int64]map[int64]bool // blocker -> blocked users
+	stories    map[int64]*StoryRec
+	pushTokens map[string]*PushRec
 
 	nextUser, nextConv, nextMsg, nextStory int64
 
@@ -306,7 +307,7 @@ func newStore(p Persister, driver string) (*Store, error) {
 		userConvs: map[int64]map[int64]bool{}, msgs: map[int64][]*MsgRec{}, msgByID: map[int64]*MsgRec{},
 		clientIdx: map[string]*MsgRec{}, calls: map[string]*CallRec{}, userCalls: map[int64][]*CallRec{},
 		usernames: map[string]*UserRec{}, blocks: map[int64]map[int64]bool{}, stories: map[int64]*StoryRec{},
-		driver: driver,
+		pushTokens: map[string]*PushRec{}, driver: driver,
 	}
 	raw := map[string]map[string]json.RawMessage{}
 	lines := 0
@@ -386,6 +387,14 @@ func newStore(p Persister, driver string) (*Store, error) {
 		err := json.Unmarshal(d, &st)
 		if err == nil && s.users[st.UserID] != nil {
 			s.addStoryL(&st)
+		}
+		return err
+	})
+	decode("push", func(d []byte) error {
+		var p PushRec
+		err := json.Unmarshal(d, &p)
+		if err == nil && s.users[p.UserID] != nil {
+			s.pushTokens[p.Token] = &p
 		}
 		return err
 	})
@@ -472,7 +481,7 @@ func (s *Store) addCallL(c *CallRec) {
 }
 
 func (s *Store) liveCountL() int {
-	n := len(s.users) + len(s.sessions) + len(s.convs) + len(s.msgByID) + len(s.calls) + len(s.stories)
+	n := len(s.users) + len(s.sessions) + len(s.convs) + len(s.msgByID) + len(s.calls) + len(s.stories) + len(s.pushTokens)
 	for _, m := range s.members {
 		n += len(m)
 	}
@@ -512,6 +521,9 @@ func (s *Store) allRecordsL() []record {
 	}
 	for _, st := range s.stories {
 		add("story", strconv.FormatInt(st.ID, 10), st)
+	}
+	for _, p := range s.pushTokens {
+		add("push", p.Token, p)
 	}
 	for by, set := range s.blocks {
 		for user := range set {
@@ -1102,6 +1114,15 @@ func (s *Store) MemberIDs(conv int64) []int64 {
 		out = append(out, id)
 	}
 	return out
+}
+
+func (s *Store) ConvTitle(conv int64) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if c := s.convs[conv]; c != nil {
+		return c.Title
+	}
+	return ""
 }
 
 func (s *Store) ConvType(conv int64) (string, bool) {

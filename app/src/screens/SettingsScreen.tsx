@@ -5,6 +5,7 @@ import Toggle from '../components/Toggle';
 import TabBar from '../components/TabBar';
 import { api, errorText } from '../lib/api';
 import { getServerUrl, isNativeShell } from '../lib/config';
+import { disablePush, enablePush, pushAvailable, pushEnabled, pushPermission } from '../lib/push';
 import { navigate } from '../lib/router';
 import { socket } from '../lib/socket';
 import { logout, updateProfile, useAuth } from '../store/auth';
@@ -47,6 +48,7 @@ export default function SettingsScreen() {
   const [notifPermission, setNotifPermission] = useState(
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
   );
+  const [pushOn, setPushOn] = useState(pushEnabled);
 
   const cleanUsername = username.trim().replace(/^@/, '');
   const dirty = name.trim() !== me.name || about.trim() !== me.about || cleanUsername !== (me.username ?? '');
@@ -119,6 +121,21 @@ export default function SettingsScreen() {
   async function enableNotifications() {
     const p = await Notification.requestPermission();
     setNotifPermission(p);
+  }
+
+  async function setPush(on: boolean) {
+    try {
+      if (on) {
+        const ok = await enablePush(true);
+        if (!ok) toast(pushPermission() === 'denied' ? 'Notifications are blocked in this browser’s site settings' : "This browser can't get notifications");
+        setPushOn(ok);
+      } else {
+        await disablePush();
+        setPushOn(false);
+      }
+    } catch (e) {
+      toast(errorText(e));
+    }
   }
 
   return (
@@ -270,7 +287,14 @@ export default function SettingsScreen() {
             <Server size={20} />
             <span className="setting-value">{getServerUrl() || location.origin}</span>
           </div>
-          {!isNativeShell && typeof Notification !== 'undefined' && notifPermission !== 'granted' && (
+          {pushAvailable() ? (
+            <Toggle
+              label="Notifications"
+              hint="New messages and calls, even when Chaty is closed"
+              on={pushOn}
+              onChange={(v) => void setPush(v)}
+            />
+          ) : !isNativeShell && typeof Notification !== 'undefined' && notifPermission !== 'granted' && (
             <button className="setting-row" onClick={enableNotifications}>
               <Bell size={20} />
               <span>Enable notifications</span>

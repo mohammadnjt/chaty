@@ -158,6 +158,8 @@ export const api = {
   calls: () => request<CallRecord[]>('GET', '/api/calls'),
   upload: (file: Blob, filename: string, onProgress?: (p: number) => void) =>
     uploadWithProgress(file, filename, onProgress) as Promise<{ url: string; name: string; size: number }>,
+  registerPush: (token: string, platform: 'web' | 'android') => request('POST', '/api/push', { token, platform }),
+  unregisterPush: (token: string) => request('DELETE', '/api/push', { token }),
   stories: () => request<{ mine: Story[]; feed: StoryGroup[] }>('GET', '/api/stories'),
   postStory: (file: Blob, name: string, caption: string, onProgress?: (p: number) => void) =>
     uploadWithProgress(file, name, onProgress, '/api/stories', { caption }) as Promise<Story>,

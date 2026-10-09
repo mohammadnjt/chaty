@@ -1,4 +1,5 @@
 // Small bridge to the Nitron Android shell; every call is a no-op in a browser.
+import { pushEnabled } from './push';
 
 interface NitronBridge {
   showNotification?: (title: string, message: string) => void;
@@ -8,7 +9,8 @@ interface NitronBridge {
 const bridge = () => (window as unknown as { Nitron?: NitronBridge }).Nitron;
 
 export function notify(title: string, message: string) {
-  if (document.visibilityState === 'visible') return;
+  // With push on, the server's notification covers it.
+  if (document.visibilityState === 'visible' || pushEnabled()) return;
   try {
     const n = bridge();
     if (n?.showNotification) {
@@ -83,6 +85,42 @@ export const callAudio = {
     return () => window.removeEventListener('chaty-audio-route', h);
   },
 };
+
+interface ChatyAppBridge {
+  hasPermissions: (names: string) => boolean;
+  requestPermissions: (names: string) => void;
+}
+
+const appBridge = () => (window as unknown as { ChatyApp?: ChatyAppBridge }).ChatyApp;
+
+/**
+ * In the Android app, gets Android's permission for the microphone (and
+ * camera) before a call uses them: asking from inside getUserMedia can leave
+ * it waiting forever. Resolves whether the microphone may be used; elsewhere
+ * the browser asks by itself, so it's always true.
+ */
+export function ensureMediaPermission(camera: boolean): Promise<boolean> {
+  const app = appBridge();
+  if (!app) return Promise.resolve(true);
+  const mic = () => {
+    try {
+      return app.hasPermissions('RECORD_AUDIO');
+    } catch {
+      return true;
+    }
+  };
+  if (mic() && (!camera || app.hasPermissions('CAMERA'))) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const done = () => {
+      window.removeEventListener('chaty-permissions', done);
+      clearTimeout(timer);
+      resolve(mic());
+    };
+    const timer = window.setTimeout(done, 60_000);
+    window.addEventListener('chaty-permissions', done);
+    app.requestPermissions(camera ? 'RECORD_AUDIO,CAMERA' : 'RECORD_AUDIO');
+  });
+}
 
 export function vibrate(pattern: number | number[]) {
   try {

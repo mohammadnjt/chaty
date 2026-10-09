@@ -1,7 +1,7 @@
 {
   "name": "Chaty",
   "packageId": "app.chaty.messenger",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "entry": "web-build/index.html",
   "orientation": "portrait",
   "statusBar": true,
