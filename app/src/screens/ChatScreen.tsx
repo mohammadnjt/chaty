@@ -91,7 +91,7 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="sheet-hero">
-          <Avatar name={title} src={peer ? peer.avatar : conv.avatar} group={!peer} size={96} />
+          <Avatar name={title} src={peer ? peer.avatar : conv.avatar} group={!peer} size={96} storyOf={peer?.id} />
           <h2 dir="auto">{title}</h2>
           {peer ? (
             <>
@@ -153,7 +153,7 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
             <h3 className="section-title">Members</h3>
             {conv.members.map((m) => (
               <div key={m.id} className="user-row static">
-                <Avatar name={m.name} src={m.avatar} size={42} online={!!presence[m.id]?.online} />
+                <Avatar name={m.name} src={m.avatar} size={42} online={!!presence[m.id]?.online} storyOf={m.id} />
                 <div className="user-row-body">
                   <span className="user-name" dir="auto">
                     {m.name}
@@ -414,7 +414,7 @@ export default function ChatScreen({ id }: { id: number }) {
         </button>
         {conv && (
           <button className="chat-who" onClick={() => setInfo(true)}>
-            <Avatar name={title} src={peer ? peer.avatar : conv.avatar} group={!peer} size={42} />
+            <Avatar name={title} src={peer ? peer.avatar : conv.avatar} group={!peer} size={42} storyOf={peer?.id} />
             <span className="chat-who-text">
               <span className="chat-who-name" dir="auto">
                 {title}

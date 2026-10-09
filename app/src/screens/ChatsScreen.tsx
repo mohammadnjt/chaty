@@ -50,7 +50,7 @@ const ChatRow = memo(function ChatRow({
 
   return (
     <button className="chat-row" onClick={() => navigate(`/chat/${c.id}`)}>
-      <Avatar name={title} src={peer ? peer.avatar : c.avatar} group={c.type === 'group'} online={online} />
+      <Avatar name={title} src={peer ? peer.avatar : c.avatar} group={c.type === 'group'} online={online} storyOf={peer?.id} />
       <div className="chat-row-body">
         <div className="chat-row-top">
           <span className="chat-name" dir="auto">

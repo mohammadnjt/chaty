@@ -77,7 +77,7 @@ function sub(u: User) {
 export function UserRow({ u, onClick, disabled }: { u: User; onClick: () => void; disabled?: boolean }) {
   return (
     <button className="user-row" onClick={onClick} disabled={disabled}>
-      <Avatar name={u.name} src={u.avatar} size={48} online={u.online} />
+      <Avatar name={u.name} src={u.avatar} size={48} online={u.online} storyOf={u.id} />
       <div className="user-row-body">
         <span className="user-name" dir="auto">
           {u.name}

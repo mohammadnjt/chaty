@@ -5,7 +5,7 @@ import { api, errorText } from '../lib/api';
 import { mediaUrl } from '../lib/config';
 import { formatAgo } from '../lib/format';
 import type { Story, StoryViewer as Viewer, User } from '../lib/types';
-import { loadStories, markStorySeen } from '../store/stories';
+import { loadStories, markStorySeen, stopWatching, useStories } from '../store/stories';
 import { toast } from '../store/toast';
 import Avatar from './Avatar';
 
@@ -275,3 +275,12 @@ export default function StoryViewer({
     document.querySelector('.app') ?? document.body,
   );
 }
+
+/** Stories opened from someone's avatar, anywhere in the app. */
+export function StoryHost() {
+  const watching = useStories((s) => s.watching);
+  const group = useStories((s) => s.feed.find((g) => g.user.id === watching));
+  if (watching == null || !group) return null;
+  return <StoryViewer key={watching} groups={[group]} start={0} onClose={stopWatching} />;
+}
+

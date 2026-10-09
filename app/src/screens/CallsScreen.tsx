@@ -61,7 +61,7 @@ export default function CallsScreen() {
             const { missed, Icon, label } = describe(c);
             return (
               <div key={c.id} className="chat-row call-row">
-                <Avatar name={c.peer.name} src={c.peer.avatar} online={!!presence[c.peer.id]?.online} />
+                <Avatar name={c.peer.name} src={c.peer.avatar} online={!!presence[c.peer.id]?.online} storyOf={c.peer.id} />
                 <div className="chat-row-body">
                   <div className="chat-row-top">
                     <span className={`chat-name ${missed ? 'danger' : ''}`} dir="auto">

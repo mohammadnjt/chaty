@@ -1,6 +1,7 @@
 import { Users } from 'lucide-react';
 import { useState } from 'react';
 import { mediaUrl } from '../lib/config';
+import { useStoryState, watchStories } from '../store/stories';
 import { initials } from '../lib/format';
 
 const GRADIENTS = [
@@ -28,16 +29,32 @@ interface Props {
   group?: boolean;
   ring?: boolean;
   className?: string;
+  /** This person's user id: a ring shows when they have a story, and tapping the photo plays it. */
+  storyOf?: number;
 }
 
-export default function Avatar({ name, src, size = 52, online, group, ring = true, className = '' }: Props) {
+export default function Avatar({ name, src, size = 52, online, group, ring = true, className = '', storyOf }: Props) {
   const [broken, setBroken] = useState(false);
+  const story = useStoryState(storyOf);
   const [a, b] = GRADIENTS[hash(name || '?') % GRADIENTS.length];
   const showImage = src && !broken;
+  const watch = (e: React.SyntheticEvent) => {
+    // Not the chat row or header the photo sits in.
+    e.stopPropagation();
+    e.preventDefault();
+    watchStories(storyOf!);
+  };
   return (
     <div
-      className={`avatar ${ring ? 'avatar-ring' : ''} ${className}`}
+      className={`avatar ${ring ? 'avatar-ring' : ''} ${story ? `has-story story-${story}` : ''} ${className}`}
       style={{ width: size, height: size, fontSize: size * 0.36 }}
+      {...(story && {
+        role: 'button',
+        tabIndex: 0,
+        'aria-label': `${name}'s story`,
+        onClick: watch,
+        onKeyDown: (e: React.KeyboardEvent) => (e.key === 'Enter' || e.key === ' ') && watch(e),
+      })}
     >
       {showImage ? (
         <img src={mediaUrl(src)} alt="" onError={() => setBroken(true)} draggable={false} />

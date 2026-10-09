@@ -204,7 +204,7 @@ export default function StatusScreen() {
             const p = presence[u.id];
             return (
               <button key={u.id} className="user-row" onClick={() => openChat(u)}>
-                <Avatar name={u.name} src={u.avatar} size={48} online={!!p?.online} />
+                <Avatar name={u.name} src={u.avatar} size={48} online={!!p?.online} storyOf={u.id} />
                 <div className="user-row-body">
                   <span className="user-name" dir="auto">
                     {u.name}

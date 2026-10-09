@@ -2,11 +2,13 @@ import { Eye, EyeOff, Hourglass, Server } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Logo from '../components/Logo';
 import Scenery from '../components/Scenery';
+import { useTheme } from '../lib/theme';
 import { api, ApiError, errorText, type PublicConfig } from '../lib/api';
 import { getServerUrl, isNativeShell, normalizeServerUrl, setServerUrl } from '../lib/config';
 import { login, register } from '../store/auth';
 
 export default function AuthScreen() {
+  const day = useTheme((t) => t.theme) === 'light';
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [phone, setPhone] = useState('');
   const [name, setName] = useState('');
@@ -60,7 +62,7 @@ export default function AuthScreen() {
         <div className="auth-brand">
           <Logo size={68} />
           <h1>{appName}</h1>
-          <p>Messages, voice and video calls under a calm night sky.</p>
+          <p>Messages, voice and video calls under a calm {day ? 'blue' : 'night'} sky.</p>
         </div>
 
         {pending ? (

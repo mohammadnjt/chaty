@@ -8,8 +8,10 @@ import {
   Lock,
   Menu,
   MessagesSquare,
+  Moon,
   Server,
   ShieldCheck,
+  Sun,
   Users,
   Video,
   X,
@@ -19,6 +21,7 @@ import { useEffect, useState } from 'react';
 import Logo from '../components/Logo';
 import Scenery from '../components/Scenery';
 import { formatBytes } from '../lib/format';
+import { toggleTheme, useTheme } from '../lib/theme';
 
 interface AndroidApp {
   url: string;
@@ -58,6 +61,7 @@ function StatusIcons() {
 
 /** The app's sign-in screen, drawn inside a tilted phone. */
 function PhoneMockup() {
+  const day = useTheme((s) => s.theme) === 'light';
   return (
     <div className="lp-phone-wrap" aria-hidden="true">
       <div className="lp-phone">
@@ -71,7 +75,7 @@ function PhoneMockup() {
           <div className="lp-screen-body">
             <Logo size={46} />
             <h3>Chaty</h3>
-            <p>Messages, voice and video calls under a calm night sky.</p>
+            <p>Messages, voice and video calls under a calm {day ? 'blue' : 'night'} sky.</p>
             <div className="lp-card">
               <div className="lp-seg">
                 <span className="on">Sign in</span>
@@ -125,6 +129,7 @@ export default function Landing() {
   const [menu, setMenu] = useState(false);
   const [active, setActive] = useState('home');
   const [scrolled, setScrolled] = useState(false);
+  const day = useTheme((s) => s.theme) === 'light';
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
   useEffect(() => {
@@ -194,19 +199,22 @@ export default function Landing() {
             Open Web App
           </a>
         </nav>
+        <button className="lp-theme" onClick={toggleTheme} aria-label={day ? 'Switch to night' : 'Switch to day'}>
+          {day ? <Moon size={20} /> : <Sun size={20} />}
+        </button>
         <button className="lp-menu" onClick={() => setMenu((v) => !v)} aria-label="Menu">
           {menu ? <X size={24} /> : <Menu size={24} />}
         </button>
       </header>
 
       <section id="home" className="lp-hero">
-        <Scenery variant="wide" className="lp-bg lp-bg-wide" />
-        <Scenery variant="full" className="lp-bg lp-bg-tall" />
+        <Scenery variant="wide" className="lp-bg lp-bg-wide" onSkyClick={toggleTheme} />
+        <Scenery variant="full" className="lp-bg lp-bg-tall" onSkyClick={toggleTheme} />
         <div className="lp-hero-inner">
           <div className="lp-hero-text">
             <Logo size={96} />
             <h1>Chaty</h1>
-            <p className="lp-tagline">Messages, voice and video calls under a calm night sky.</p>
+            <p className="lp-tagline">Messages, voice and video calls under a calm {day ? 'blue' : 'night'} sky.</p>
             <div className="lp-cta">
               <a className="lp-btn-primary" href={APP_URL}>
                 <Globe size={22} />

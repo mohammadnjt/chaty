@@ -9,9 +9,10 @@ interface StoriesState {
   mine: Story[];
   feed: StoryGroup[];
   loaded: boolean;
+  watching: number | null; // whose stories are open from their avatar
 }
 
-const empty: StoriesState = { mine: [], feed: [], loaded: false };
+const empty: StoriesState = { mine: [], feed: [], loaded: false, watching: null };
 
 export const useStories = create<StoriesState>(() => empty);
 
@@ -28,6 +29,19 @@ export function loadStories(): Promise<void> {
     .finally(() => (loading = null));
   return loading;
 }
+
+/** "unseen" or "seen" when the user has stories up, else null (for the ring around their avatar). */
+export function useStoryState(userId?: number): 'unseen' | 'seen' | null {
+  return useStories((s) => {
+    if (userId == null) return null;
+    const g = s.feed.find((x) => x.user.id === userId);
+    return g ? (g.unseen ? 'unseen' : 'seen') : null;
+  });
+}
+
+/** Plays someone's stories (tapping their avatar). */
+export const watchStories = (userId: number) => useStories.setState({ watching: userId });
+export const stopWatching = () => useStories.setState({ watching: null });
 
 /** Shows the story as seen right away and tells the server in the background. */
 export function markStorySeen(story: Story) {

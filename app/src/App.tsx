@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Logo from './components/Logo';
 import Scenery from './components/Scenery';
+import { StoryHost } from './components/StoryViewer';
 import { matchPath, usePath } from './lib/router';
 import { socket } from './lib/socket';
 import { unlockAudio } from './lib/sounds';
@@ -94,6 +95,7 @@ export default function App() {
         <>
           <Screen path={path} />
           <ConnectionBar />
+          <StoryHost />
           <CallOverlay />
           <RemoteAudio />
         </>

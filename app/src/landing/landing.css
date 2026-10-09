@@ -143,6 +143,7 @@ button {
 .lp-hero-inner {
   position: relative;
   z-index: 2;
+  pointer-events: none; /* the moon / sun behind it stays clickable */
   width: 100%;
   max-width: 1240px;
   margin: 0 auto;
@@ -717,3 +718,124 @@ button {
     animation: none !important;
   }
 }
+
+.lp-hero-inner > * {
+  pointer-events: auto;
+}
+
+/* The moon (or sun) switches between night and day. */
+.sky-switch {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 0.2s;
+}
+.sky-switch:hover {
+  opacity: 0.85;
+}
+
+.lp-theme {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: 8px;
+  border-radius: 50%;
+  color: var(--lp-text-2);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.lp-theme:hover {
+  color: var(--lp-text);
+}
+
+/* ---------- light theme: a sunny day ---------- */
+:root[data-theme='light'] {
+  --lp-bg: #eef5fd;
+  --lp-text: #15193b;
+  --lp-text-2: #4b5582;
+  --lp-text-3: #7a83a9;
+  --lp-accent: #8a5cf6;
+  --lp-accent-2: #7c4dea;
+  --lp-line: rgba(25, 45, 100, 0.12);
+  color-scheme: light;
+}
+
+/* Over the sky, text stays white like at night. */
+[data-theme='light'] .lp-hero,
+[data-theme='light'] .lp-header:not(.scrolled) {
+  --lp-text: #fff;
+  --lp-text-2: rgba(255, 255, 255, 0.92);
+  --lp-text-3: rgba(255, 255, 255, 0.8);
+  --lp-accent-2: #fff;
+  --lp-line: rgba(255, 255, 255, 0.3);
+  color: var(--lp-text);
+}
+
+[data-theme='light'] .lp-tagline {
+  color: #fff;
+  text-shadow: 0 2px 18px rgba(20, 70, 150, 0.35);
+}
+
+[data-theme='light'] :is(.lp-points, .lp-cta-note) {
+  text-shadow: 0 1px 10px rgba(20, 70, 150, 0.4);
+}
+
+[data-theme='light'] .lp-header {
+  background: linear-gradient(rgba(18, 82, 170, 0.32), rgba(18, 82, 170, 0));
+}
+[data-theme='light'] .lp-header.scrolled {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+}
+
+[data-theme='light'] .lp-hero-text h1 {
+  text-shadow: 0 6px 34px rgba(20, 70, 150, 0.35);
+}
+
+[data-theme='light'] .lp-btn-outline {
+  border-color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+[data-theme='light'] .lp-section .lp-btn-outline {
+  border-color: rgba(124, 77, 234, 0.45);
+  background: transparent;
+  color: var(--lp-accent-2);
+}
+
+[data-theme='light'] .lp-card-feature,
+[data-theme='light'] .lp-card-download {
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(30, 70, 140, 0.08);
+}
+
+[data-theme='light'] .lp-icon {
+  background: rgba(138, 92, 246, 0.12);
+}
+
+[data-theme='light'] .lp-header.scrolled .lp-nav a:hover,
+[data-theme='light'] .lp-header.scrolled .lp-nav a.on {
+  color: var(--lp-text);
+}
+
+@media (max-width: 760px) {
+  .lp-theme {
+    margin-left: auto;
+  }
+
+  .lp-header .lp-menu {
+    margin-left: 0;
+  }
+
+  [data-theme='light'] .lp-nav {
+    background: #fff;
+    box-shadow: 0 18px 40px rgba(30, 70, 140, 0.15);
+  }
+
+  [data-theme='light'] .lp-points {
+    background: rgba(16, 78, 160, 0.28);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+}
+

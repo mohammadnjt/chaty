@@ -1,4 +1,19 @@
-import { AtSign, Ban, Bell, Camera, ChevronRight, KeyRound, LogOut, Server, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
+import {
+  AtSign,
+  Ban,
+  Bell,
+  Camera,
+  ChevronRight,
+  KeyRound,
+  LogOut,
+  Moon,
+  Server,
+  ShieldCheck,
+  Sun,
+  SunMoon,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Avatar from '../components/Avatar';
 import Toggle from '../components/Toggle';
@@ -6,6 +21,7 @@ import TabBar from '../components/TabBar';
 import { api, errorText } from '../lib/api';
 import { getServerUrl, isNativeShell } from '../lib/config';
 import { disablePush, enablePush, pushAvailable, pushEnabled, pushPermission } from '../lib/push';
+import { setTheme, useTheme, type ThemeChoice } from '../lib/theme';
 import { navigate } from '../lib/router';
 import { socket } from '../lib/socket';
 import { logout, updateProfile, useAuth } from '../store/auth';
@@ -28,6 +44,33 @@ async function squareAvatar(file: File): Promise<Blob> {
   canvas.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
   return new Promise((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not read that image'))), 'image/jpeg', 0.88),
+  );
+}
+
+const THEMES: [ThemeChoice, string, typeof Moon][] = [
+  ['dark', 'Night', Moon],
+  ['light', 'Day', Sun],
+  ['system', 'Auto', SunMoon],
+];
+
+/** Night sky, sunny day, or whatever the phone uses. */
+function ThemePicker() {
+  const choice = useTheme((s) => s.choice);
+  return (
+    <div className="card theme-picker" role="radiogroup" aria-label="Theme">
+      {THEMES.map(([value, label, Icon]) => (
+        <button
+          key={value}
+          className={`theme-option ${choice === value ? 'on' : ''}`}
+          role="radio"
+          aria-checked={choice === value}
+          onClick={() => setTheme(value)}
+        >
+          <Icon size={22} />
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -213,6 +256,9 @@ export default function SettingsScreen() {
             </div>
           )}
         </div>
+
+        <h3 className="section-title">Appearance</h3>
+        <ThemePicker />
 
         <h3 className="section-title">Privacy</h3>
         <div className="card list-card">
