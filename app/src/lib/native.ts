@@ -99,9 +99,9 @@ const appBridge = () => (window as unknown as { ChatyApp?: ChatyAppBridge }).Cha
  * it waiting forever. Resolves whether the microphone may be used; elsewhere
  * the browser asks by itself, so it's always true.
  */
-export function ensureMediaPermission(camera: boolean): Promise<boolean> {
+export async function ensureMediaPermission(camera: boolean): Promise<boolean> {
   const app = appBridge();
-  if (!app) return Promise.resolve(true);
+  if (!app) return true;
   const mic = () => {
     try {
       return app.hasPermissions('RECORD_AUDIO');
@@ -109,16 +109,24 @@ export function ensureMediaPermission(camera: boolean): Promise<boolean> {
       return true;
     }
   };
-  if (mic() && (!camera || app.hasPermissions('CAMERA'))) return Promise.resolve(true);
+  if (mic() && (!camera || app.hasPermissions('CAMERA'))) return true;
+  await askPermissions(camera ? 'RECORD_AUDIO,CAMERA' : 'RECORD_AUDIO');
+  return mic();
+}
+
+/** Shows Android's prompt for the permissions (e.g. "RECORD_AUDIO,CAMERA") and waits for the answer. */
+export function askPermissions(names: string): Promise<void> {
+  const app = appBridge();
+  if (!app) return Promise.resolve();
   return new Promise((resolve) => {
     const done = () => {
       window.removeEventListener('chaty-permissions', done);
       clearTimeout(timer);
-      resolve(mic());
+      resolve();
     };
     const timer = window.setTimeout(done, 60_000);
     window.addEventListener('chaty-permissions', done);
-    app.requestPermissions(camera ? 'RECORD_AUDIO,CAMERA' : 'RECORD_AUDIO');
+    app.requestPermissions(names);
   });
 }
 

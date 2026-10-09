@@ -86,6 +86,7 @@ final class CallAudio {
             @Override
             public void run() {
                 end();
+                if (activity instanceof MainActivity) ((MainActivity) activity).callEnded();
             }
         });
     }

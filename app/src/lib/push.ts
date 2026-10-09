@@ -1,6 +1,7 @@
-// Push notifications in browsers and the installed web app, through Firebase
-// Cloud Messaging. The service worker (public/sw.js) shows them. The Android
-// app can't use web push: its WebView has no Push API.
+// Push notifications through Firebase Cloud Messaging. In browsers and the
+// installed web app the service worker (public/sw.js) shows them; the Android
+// app gets them natively (its WebView has no Push API) and hands the page its
+// push address through window.ChatyApp.
 import { api } from './api';
 import { isNativeShell, storage } from './config';
 import { socket } from './socket';
@@ -16,6 +17,26 @@ const firebaseConfig = {
 };
 const VAPID_KEY = 'BL_oaeZ2ilS6IZXvePyoqlnk1BxBIUtfvfCvOwiALVNcumcxYPwmqWGbwTY0caBizCLzhEXUg8XDxGKoD5BotSU';
 const TOKEN = 'chaty.pushToken';
+const OFF = 'chaty.pushOff'; // turned off in Settings
+
+interface AppPush {
+  pushToken?: () => void;
+}
+const appPush = () => (window as unknown as { ChatyApp?: AppPush }).ChatyApp;
+
+/** The Android app's push address ("" if Firebase isn't available on this phone). */
+function appToken(): Promise<string> {
+  return new Promise((resolve) => {
+    const done = (e: Event) => {
+      window.removeEventListener('chaty-push-token', done);
+      clearTimeout(timer);
+      resolve((e as CustomEvent<string>).detail ?? '');
+    };
+    const timer = window.setTimeout(() => done(new CustomEvent('chaty-push-token', { detail: '' })), 30_000);
+    window.addEventListener('chaty-push-token', done);
+    appPush()!.pushToken!();
+  });
+}
 
 async function firebase() {
   const [{ getApps, initializeApp }, m] = await Promise.all([import('firebase/app'), import('firebase/messaging')]);
@@ -25,6 +46,7 @@ async function firebase() {
 
 /** Whether this browser can get push notifications at all. */
 export function pushAvailable(): boolean {
+  if (isNativeShell) return !!appPush()?.pushToken;
   return (
     import.meta.env.PROD &&
     !isNativeShell &&
@@ -34,7 +56,8 @@ export function pushAvailable(): boolean {
   );
 }
 
-export const pushPermission = (): NotificationPermission => ('Notification' in window ? Notification.permission : 'denied');
+export const pushPermission = (): NotificationPermission =>
+  isNativeShell ? 'granted' : 'Notification' in window ? Notification.permission : 'denied';
 
 /** Push is on for this browser. */
 export const pushEnabled = () => !!storage.get(TOKEN) && pushPermission() === 'granted';
@@ -52,7 +75,16 @@ export function enablePush(ask: boolean): Promise<boolean> {
 }
 
 async function register(ask: boolean): Promise<boolean> {
-  if (!pushAvailable()) return false;
+  if (!pushAvailable() || (!ask && storage.get(OFF))) return false;
+  storage.remove(OFF);
+  if (isNativeShell) {
+    // Android asks about notifications itself (Android 13+).
+    const token = await appToken();
+    if (!token) return false;
+    await api.registerPush(token, 'android');
+    storage.set(TOKEN, token);
+    return true;
+  }
   let permission = Notification.permission;
   if (permission === 'default' && ask) permission = await Notification.requestPermission();
   if (permission !== 'granted') return false;
@@ -68,12 +100,14 @@ async function register(ask: boolean): Promise<boolean> {
   return true;
 }
 
-/** This browser stops getting notifications for the account (sign out, or turned off). */
-export async function disablePush() {
+/** This device stops getting notifications for the account: signing out, or turned off (byChoice). */
+export async function disablePush(byChoice = false) {
+  if (byChoice) storage.set(OFF, '1');
   const token = storage.get(TOKEN);
   if (!token) return;
   storage.remove(TOKEN);
   await api.unregisterPush(token).catch(() => {});
+  if (isNativeShell) return;
   try {
     const fb = await firebase();
     if (fb) await fb.m.deleteToken(fb.messaging);
@@ -97,3 +131,12 @@ window.addEventListener('chaty-app-state', (e) => {
   reportVisibility();
 });
 socket.on('hello', reportVisibility);
+
+// Firebase can hand the Android app a new push address at any time.
+window.addEventListener('chaty-push-token', (e) => {
+  const token = (e as CustomEvent<string>).detail;
+  if (token && storage.get(TOKEN) && storage.get(TOKEN) !== token) {
+    storage.set(TOKEN, token);
+    void api.registerPush(token, 'android').catch(() => {});
+  }
+});

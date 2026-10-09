@@ -11,3 +11,4 @@ app/android/.tools
 app/android/release.keystore
 app/android/keystore.properties
 *firebase-adminsdk*.json
+google-services.json

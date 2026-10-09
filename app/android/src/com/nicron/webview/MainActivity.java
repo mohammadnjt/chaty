@@ -29,17 +29,22 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.messaging.FirebaseMessaging;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import org.json.JSONObject;
 
 /**
  * Chaty's Android shell: Nitron's WebView activity (same class name, so
  * Nitron's manifest still points here) plus what a messenger needs on top:
  * call audio routing (window.ChatyAudio), the file picker for attachments,
- * pictures from the keyboard (ChatyWebView), and opening links and
- * downloads outside the app.
+ * pictures from the keyboard (ChatyWebView), push notifications
+ * (ChatyMessagingService), and opening links and downloads outside the app.
  */
 public class MainActivity extends Activity {
     private static final String ASSET_HOST = "appassets.androidplatform.net";
@@ -53,6 +58,9 @@ public class MainActivity extends Activity {
     private ChatyWebView webView;
     private CallAudio callAudio;
     private ValueCallback<Uri[]> fileCallback;
+    private boolean pageLoaded;
+    private String pendingHash; // a chat to open once the page is up
+    private static WeakReference<MainActivity> current = new WeakReference<>(null);
 
     @Override
     protected void onCreate(Bundle bundle) {
@@ -69,6 +77,55 @@ public class MainActivity extends Activity {
         }
         this.webView.loadUrl("https://appassets.androidplatform.net/index.html");
         setContentView(this.rootLayout);
+        current = new WeakReference<>(this);
+        openFrom(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openFrom(intent);
+    }
+
+    // A tapped notification: show its chat; a call may show over the lock screen.
+    private void openFrom(Intent intent) {
+        if (intent == null) return;
+        if (intent.getBooleanExtra(ChatyMessagingService.EXTRA_CALL, false) && Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        }
+        String url = intent.getStringExtra(ChatyMessagingService.EXTRA_URL);
+        int hash = url == null ? -1 : url.indexOf('#');
+        if (hash < 0) return;
+        pendingHash = url.substring(hash);
+        if (pageLoaded) showPendingChat();
+    }
+
+    private void showPendingChat() {
+        if (pendingHash == null) return;
+        webView.evaluateJavascript("location.hash = " + JSONObject.quote(pendingHash), null);
+        pendingHash = null;
+    }
+
+    /** After a call: the app no longer shows over the lock screen. */
+    void callEnded() {
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(false);
+            setTurnScreenOn(false);
+        }
+    }
+
+    /** Firebase gave this phone a new push address: the page registers it with the server. */
+    static void onPushToken(final String token) {
+        final MainActivity a = current.get();
+        if (a == null) return;
+        a.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                a.dispatch("chaty-push-token", token);
+            }
+        });
     }
 
     private void configureWebView() {
@@ -229,6 +286,29 @@ public class MainActivity extends Activity {
             return true;
         }
 
+        /** Fetches this phone's push address; it arrives as a "chaty-push-token" event ("" if unavailable). */
+        @JavascriptInterface
+        public void pushToken() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                        MainActivity.this.requestPermissions(new String[] {"android.permission.POST_NOTIFICATIONS"}, PERMISSIONS_REQUEST);
+                    }
+                    try {
+                        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(new OnCompleteListener<String>() {
+                            @Override
+                            public void onComplete(Task<String> task) {
+                                dispatch("chaty-push-token", task.isSuccessful() && task.getResult() != null ? task.getResult() : "");
+                            }
+                        });
+                    } catch (Exception e) {
+                        dispatch("chaty-push-token", "");
+                    }
+                }
+            });
+        }
+
         /** Shows Android's prompt; the page hears back through a "chaty-permissions" event. */
         @JavascriptInterface
         public void requestPermissions(String names) {
@@ -287,6 +367,8 @@ public class MainActivity extends Activity {
         public void onPageFinished(WebView webView, String str) {
             super.onPageFinished(webView, str);
             MainActivity.this.hideSplash();
+            pageLoaded = true;
+            showPendingChat();
         }
     }
 

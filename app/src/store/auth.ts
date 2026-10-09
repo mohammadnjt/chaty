@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { api, ApiError, setApiToken, setUnauthorizedHandler, type AuthResponse } from '../lib/api';
 import { isNativeShell, needsServerUrl, storage } from '../lib/config';
-import { ensureMediaPermission } from '../lib/native';
+import { askPermissions } from '../lib/native';
 import { disablePush, enablePush } from '../lib/push';
 import { navigate } from '../lib/router';
 import { socket } from '../lib/socket';
@@ -46,14 +46,16 @@ function signedIn(token: string, me: User) {
   useAuth.setState({ status: 'ready', me });
   socket.connect(token);
   void loadConfig();
-  // Keep this browser's push registration fresh (no prompt here).
-  void enablePush(false).catch(() => {});
-  // The Android app asks for the microphone and camera once up front, so the
-  // first call doesn't stop for Android's prompt.
-  if (isNativeShell && !storage.get('chaty.askedMedia')) {
-    storage.set('chaty.askedMedia', '1');
-    window.setTimeout(() => void ensureMediaPermission(true), 1500);
-  }
+  void (async () => {
+    // The Android app asks once, up front, for what calls and notifications
+    // need, so the first call doesn't stop for Android's prompts.
+    if (isNativeShell && !storage.get('chaty.askedPermissions')) {
+      storage.set('chaty.askedPermissions', '1');
+      await askPermissions('RECORD_AUDIO,CAMERA,POST_NOTIFICATIONS');
+    }
+    // Keep this device's push registration fresh (browsers don't prompt here).
+    await enablePush(false).catch(() => false);
+  })();
   loadConversations().catch(() => {});
   if (me.role === 'admin') refreshPendingCount();
 }

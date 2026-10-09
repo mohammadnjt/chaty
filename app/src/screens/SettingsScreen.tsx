@@ -130,7 +130,7 @@ export default function SettingsScreen() {
         if (!ok) toast(pushPermission() === 'denied' ? 'Notifications are blocked in this browser’s site settings' : "This browser can't get notifications");
         setPushOn(ok);
       } else {
-        await disablePush();
+        await disablePush(true);
         setPushOn(false);
       }
     } catch (e) {
