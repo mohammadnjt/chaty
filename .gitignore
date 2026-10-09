@@ -8,3 +8,5 @@ server/.env
 .env
 .DS_Store
 app/android/.tools
+app/android/release.keystore
+app/android/keystore.properties

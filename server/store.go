@@ -290,8 +290,9 @@ type Store struct {
 	userCalls map[int64][]*CallRec
 	usernames map[string]*UserRec      // lower-case username -> user
 	blocks    map[int64]map[int64]bool // blocker -> blocked users
+	stories   map[int64]*StoryRec
 
-	nextUser, nextConv, nextMsg int64
+	nextUser, nextConv, nextMsg, nextStory int64
 
 	w             *writer
 	driver        string
@@ -304,7 +305,7 @@ func newStore(p Persister, driver string) (*Store, error) {
 		convs: map[int64]*ConvRec{}, direct: map[string]int64{}, members: map[int64]map[int64]*MemberRec{},
 		userConvs: map[int64]map[int64]bool{}, msgs: map[int64][]*MsgRec{}, msgByID: map[int64]*MsgRec{},
 		clientIdx: map[string]*MsgRec{}, calls: map[string]*CallRec{}, userCalls: map[int64][]*CallRec{},
-		usernames: map[string]*UserRec{}, blocks: map[int64]map[int64]bool{},
+		usernames: map[string]*UserRec{}, blocks: map[int64]map[int64]bool{}, stories: map[int64]*StoryRec{},
 		driver: driver,
 	}
 	raw := map[string]map[string]json.RawMessage{}
@@ -377,6 +378,14 @@ func newStore(p Persister, driver string) (*Store, error) {
 		err := json.Unmarshal(d, &b)
 		if err == nil && s.users[b.By] != nil && s.users[b.User] != nil {
 			s.setBlockL(b.By, b.User, true)
+		}
+		return err
+	})
+	decode("story", func(d []byte) error {
+		var st StoryRec
+		err := json.Unmarshal(d, &st)
+		if err == nil && s.users[st.UserID] != nil {
+			s.addStoryL(&st)
 		}
 		return err
 	})
@@ -463,7 +472,7 @@ func (s *Store) addCallL(c *CallRec) {
 }
 
 func (s *Store) liveCountL() int {
-	n := len(s.users) + len(s.sessions) + len(s.convs) + len(s.msgByID) + len(s.calls)
+	n := len(s.users) + len(s.sessions) + len(s.convs) + len(s.msgByID) + len(s.calls) + len(s.stories)
 	for _, m := range s.members {
 		n += len(m)
 	}
@@ -500,6 +509,9 @@ func (s *Store) allRecordsL() []record {
 	}
 	for _, c := range s.calls {
 		add("call", c.ID, c)
+	}
+	for _, st := range s.stories {
+		add("story", strconv.FormatInt(st.ID, 10), st)
 	}
 	for by, set := range s.blocks {
 		for user := range set {

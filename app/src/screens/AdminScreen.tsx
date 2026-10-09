@@ -23,6 +23,7 @@ const FEATURE_LABELS: [keyof Features, string, string][] = [
   ['deleteMessages', 'Deleting', 'Deleting messages for me / everyone'],
   ['reactions', 'Reactions', 'Emoji reactions on messages'],
   ['forwarding', 'Forwarding', 'Forwarding messages to other chats'],
+  ['stories', 'Stories', 'Photo and video stories that disappear after 24 hours'],
 ];
 
 function UserRow({ u, me, onChange }: { u: User; me: number; onChange: (u: User | null) => void }) {

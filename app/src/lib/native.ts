@@ -35,6 +35,7 @@ interface ChatyAudioBridge {
   start: (video: boolean) => void;
   setSpeaker: (on: boolean) => void;
   stop: () => void;
+  debug?: () => string;
 }
 
 const audioBridge = () => (window as unknown as { ChatyAudio?: ChatyAudioBridge }).ChatyAudio;
@@ -67,7 +68,15 @@ export const callAudio = {
       /* best effort */
     }
   },
-  /** speaker | earpiece | wired | bluetooth, as reported by the app. */
+  /** How Android is playing the call, for call reports. */
+  debug(): string {
+    try {
+      return audioBridge()?.debug?.() ?? '';
+    } catch {
+      return '';
+    }
+  },
+  /** speaker | earpiece | wired | bluetooth | media (the phone decides), as reported by the app. */
   onRoute(fn: (route: string) => void) {
     const h = (e: Event) => fn((e as CustomEvent<string>).detail);
     window.addEventListener('chaty-audio-route', h);

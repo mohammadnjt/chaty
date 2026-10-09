@@ -19,6 +19,7 @@ const defaults: AppConfig = {
     deleteMessages: true,
     reactions: true,
     forwarding: true,
+    stories: true,
   },
   calls: { mode: 'auto', p2pTimeoutSec: 12, iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] },
 };

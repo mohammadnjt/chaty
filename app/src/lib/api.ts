@@ -1,5 +1,17 @@
 import { apiUrl } from './config';
-import type { AdminOverview, AppConfig, CallRecord, Conversation, Message, MessageType, Settings, User } from './types';
+import type {
+  AdminOverview,
+  AppConfig,
+  CallRecord,
+  Conversation,
+  Message,
+  MessageType,
+  Settings,
+  Story,
+  StoryGroup,
+  StoryViewer,
+  User,
+} from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -146,6 +158,12 @@ export const api = {
   calls: () => request<CallRecord[]>('GET', '/api/calls'),
   upload: (file: Blob, filename: string, onProgress?: (p: number) => void) =>
     uploadWithProgress(file, filename, onProgress) as Promise<{ url: string; name: string; size: number }>,
+  stories: () => request<{ mine: Story[]; feed: StoryGroup[] }>('GET', '/api/stories'),
+  postStory: (file: Blob, name: string, caption: string, onProgress?: (p: number) => void) =>
+    uploadWithProgress(file, name, onProgress, '/api/stories', { caption }) as Promise<Story>,
+  viewStory: (id: number) => request('POST', `/api/stories/${id}/view`),
+  storyViews: (id: number) => request<StoryViewer[]>('GET', `/api/stories/${id}/views`),
+  deleteStory: (id: number) => request('DELETE', `/api/stories/${id}`),
   admin: {
     overview: () => request<AdminOverview>('GET', '/api/admin/overview'),
     users: () => request<User[]>('GET', '/api/admin/users'),

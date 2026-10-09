@@ -107,6 +107,24 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
     input.current?.focus();
   }
 
+  // Pictures sent from the phone's keyboard in the Android app (Gboard clipboard, GIFs, stickers).
+  const filesRef = useRef(onFiles);
+  filesRef.current = onFiles;
+  useEffect(() => {
+    const onKeyboardImage = (e: Event) => {
+      const { url, type } = (e as CustomEvent<{ url: string; type: string }>).detail;
+      fetch(url)
+        .then((r) => r.blob())
+        .then((blob) => {
+          const ext = type.split('/')[1]?.replace(/[^a-z0-9]/g, '') || 'png';
+          filesRef.current([new File([blob], `image.${ext}`, { type })]);
+        })
+        .catch(() => toast("Couldn't add that picture"));
+    };
+    window.addEventListener('chaty-keyboard-image', onKeyboardImage);
+    return () => window.removeEventListener('chaty-keyboard-image', onKeyboardImage);
+  }, []);
+
   function onPaste(e: React.ClipboardEvent) {
     const files = Array.from(e.clipboardData.files);
     if (files.length && !editing) {

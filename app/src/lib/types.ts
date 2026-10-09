@@ -86,6 +86,7 @@ export interface Features {
   deleteMessages: boolean;
   reactions: boolean;
   forwarding: boolean;
+  stories: boolean;
 }
 
 export interface AppConfig {
@@ -135,4 +136,27 @@ export interface AdminOverview {
   storage: { describe: string; error: string };
   turn: { running: boolean; error: string };
   settings: Settings;
+}
+
+export interface Story {
+  id: number;
+  userId: number;
+  type: 'image' | 'video';
+  url: string;
+  caption?: string;
+  createdAt: number;
+  expiresAt: number;
+  seen: boolean;
+  views?: number; // your own stories only
+}
+
+export interface StoryGroup {
+  user: User;
+  stories: Story[];
+  unseen: boolean;
+}
+
+export interface StoryViewer {
+  user: User;
+  at: number;
 }

@@ -24,6 +24,7 @@ type Features struct {
 	DeleteMessages bool `json:"deleteMessages"`
 	Reactions      bool `json:"reactions"`
 	Forwarding     bool `json:"forwarding"`
+	Stories        bool `json:"stories"`
 }
 
 type CallSettings struct {
@@ -67,6 +68,7 @@ func defaultSettings(cfg Config) Settings {
 		Features: Features{
 			VoiceCalls: true, VideoCalls: true, Groups: true, Photos: true, Files: true,
 			VoiceMessages: true, EditMessages: true, DeleteMessages: true, Reactions: true, Forwarding: true,
+			Stories: true,
 		},
 		Calls: CallSettings{
 			Mode:          "auto",

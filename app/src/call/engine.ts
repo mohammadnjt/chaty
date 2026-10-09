@@ -7,7 +7,7 @@ import { isNativeShell } from '../lib/config';
 import { uid } from '../lib/format';
 import { callAudio, notify, requestMediaPermission } from '../lib/native';
 import { socket } from '../lib/socket';
-import { playHangup, playRingback, playRingtone, stopTones } from '../lib/sounds';
+import { playHangup, playRingback, playRingtone, releaseCallTones, stopTones } from '../lib/sounds';
 import type { CallKind, User } from '../lib/types';
 import { useConfig } from '../store/config';
 import { toast } from '../store/toast';
@@ -304,6 +304,7 @@ function finish(callId: string, reason: string | null, opts: { silent?: boolean;
   historyListeners.forEach((fn) => fn());
 
   if (opts.silent || !reason) {
+    releaseCallTones();
     set(idle, true);
     return;
   }
@@ -492,6 +493,7 @@ async function sendReport(at: string) {
     app: appKind(),
     device: device(),
     route: s.audioRoute || undefined,
+    native: callAudio.debug() || undefined,
     mic: mic ? `${mic.readyState}${mic.enabled ? '' : ' off'}${mic.muted ? ' muted' : ''}` : 'none',
   };
   if (relay) {

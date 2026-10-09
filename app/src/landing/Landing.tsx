@@ -319,7 +319,8 @@ export default function Landing() {
               {android
                 ? `Version ${android.version || '—'} · ${formatBytes(android.size)}.`
                 : 'The Android app will be available here soon.'}{' '}
-              After downloading, open the file. If Android asks, allow installing apps from this source.
+              After downloading, open the file. If Android asks, allow installing apps from this source. Coming
+              from version 1.2 or older? Uninstall the old Chaty first (only this once), then install.
             </p>
             {android ? (
               <a className="lp-btn-outline small" href={android.url} download="chaty.apk">

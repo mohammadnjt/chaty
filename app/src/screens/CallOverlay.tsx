@@ -101,6 +101,8 @@ export function RemoteAudio() {
 function SpeakerButton() {
   const speaker = useCall((s) => s.speaker);
   const route = useCall((s) => s.audioRoute);
+  // This phone plays calls as ordinary media: Android picks speaker or earphones itself.
+  if (route === 'media') return null;
   const [label, icon] =
     route === 'bluetooth'
       ? ['Bluetooth', <Bluetooth size={26} />]

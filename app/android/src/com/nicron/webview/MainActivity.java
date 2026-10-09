@@ -15,6 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.animation.AlphaAnimation;
+import android.webkit.MimeTypeMap;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.GeolocationPermissions;
@@ -30,12 +31,15 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Chaty's Android shell: Nitron's WebView activity (same class name, so
  * Nitron's manifest still points here) plus what a messenger needs on top:
  * call audio routing (window.ChatyAudio), the file picker for attachments,
- * and opening links and downloads outside the app.
+ * pictures from the keyboard (ChatyWebView), and opening links and
+ * downloads outside the app.
  */
 public class MainActivity extends Activity {
     private static final String ASSET_HOST = "appassets.androidplatform.net";
@@ -45,7 +49,7 @@ public class MainActivity extends Activity {
     private boolean clearCacheOnStart = false;
     private FrameLayout rootLayout;
     private View splashView;
-    private WebView webView;
+    private ChatyWebView webView;
     private CallAudio callAudio;
     private ValueCallback<Uri[]> fileCallback;
 
@@ -55,7 +59,7 @@ public class MainActivity extends Activity {
         requestWindowFeature(1);
         readMetaData();
         this.rootLayout = new FrameLayout(this);
-        this.webView = new WebView(this);
+        this.webView = new ChatyWebView(this);
         configureWebView();
         this.rootLayout.addView(this.webView, new FrameLayout.LayoutParams(-1, -1));
         setupSplashScreen();
@@ -100,12 +104,12 @@ public class MainActivity extends Activity {
                 callback.invoke(str, true, false);
             }
 
-            // <input type="file">: attach photos and files from the phone.
+            // <input type="file">: attach photos, videos and files from the phone.
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
-                Intent intent = params.createIntent();
+                Intent intent = pickerIntent(params.getAcceptTypes());
                 if (params.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
                     intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
                 }
@@ -128,6 +132,34 @@ public class MainActivity extends Activity {
         this.webView.addJavascriptInterface(new NitronJSInterface(), "Nitron");
         this.callAudio = new CallAudio(this, this.webView);
         this.webView.addJavascriptInterface(this.callAudio, "ChatyAudio");
+    }
+
+    // The WebView's own picker only honours the first type in accept="image/*,video/*".
+    private static Intent pickerIntent(String[] accept) {
+        List<String> types = new ArrayList<>();
+        boolean any = accept == null || accept.length == 0;
+        if (accept != null) {
+            for (String a : accept) {
+                for (String t : a.split(",")) {
+                    t = t.trim().toLowerCase();
+                    if (t.isEmpty()) continue;
+                    if (t.startsWith(".")) t = MimeTypeMap.getSingleton().getMimeTypeFromExtension(t.substring(1));
+                    if (t == null || t.equals("*/*")) any = true;
+                    else if (!types.contains(t)) types.add(t);
+                }
+            }
+        }
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        if (any || types.isEmpty()) {
+            intent.setType("*/*");
+        } else if (types.size() == 1) {
+            intent.setType(types.get(0));
+        } else {
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, types.toArray(new String[0]));
+        }
+        return intent;
     }
 
     private void openOutside(Uri uri) {
@@ -173,6 +205,9 @@ public class MainActivity extends Activity {
             Uri url = webResourceRequest.getUrl();
             if (MainActivity.ASSET_HOST.equals(url.getHost())) {
                 String path = url.getPath();
+                if (path != null && path.startsWith(ChatyWebView.KEYBOARD_PATH)) {
+                    return MainActivity.this.webView.take(path);
+                }
                 if (path == null || path.isEmpty() || "/".equals(path)) {
                     path = "/index.html";
                 }

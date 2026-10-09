@@ -61,6 +61,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/calls", s.authed(s.listCalls))
 	mux.HandleFunc("POST /api/upload", s.authed(s.upload))
 	s.adminRoutes(mux)
+	s.storyRoutes(mux)
 	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
 		u, ok := s.store.UserByToken(r.URL.Query().Get("token"))
 		if !ok {
@@ -1014,13 +1015,37 @@ func uploadCategory(ext string) string {
 func (s *Server) uploadDir() string { return filepath.Join(s.cfg.DataDir, "uploads") }
 
 func (s *Server) upload(w http.ResponseWriter, r *http.Request, me UserRec) {
+	f := s.features()
+	saved, ok := s.receiveFile(w, r, func(ext string) (int, string) {
+		switch cat := uploadCategory(ext); {
+		case cat == "image" && !f.Photos && !f.Files,
+			cat == "audio" && !f.VoiceMessages && !f.Files,
+			(cat == "video" || cat == "file") && !f.Files:
+			return http.StatusForbidden, "this feature is turned off by the admin"
+		}
+		return 0, ""
+	})
+	if ok {
+		writeJSON(w, http.StatusOK, map[string]any{"url": saved.URL, "name": saved.Name, "size": saved.Size})
+	}
+}
+
+type savedFile struct {
+	URL, Name, Ext string
+	Size           int64
+}
+
+// receiveFile stores the request's multipart "file" in the uploads folder.
+// refuse sees the file's extension first and can turn it away with a status
+// and message. Error responses are written here.
+func (s *Server) receiveFile(w http.ResponseWriter, r *http.Request, refuse func(ext string) (int, string)) (savedFile, bool) {
 	st := s.settings.Get()
 	limit := int64(st.MaxUploadMB) << 20
 	r.Body = http.MaxBytesReader(w, r.Body, limit+1<<20)
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		httpError(w, http.StatusBadRequest, "file is missing or larger than "+strconv.Itoa(st.MaxUploadMB)+" MB")
-		return
+		return savedFile{}, false
 	}
 	defer file.Close()
 
@@ -1038,34 +1063,30 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request, me UserRec) {
 			ext = ".bin"
 		}
 	}
-	f := st.Features
-	switch cat := uploadCategory(ext); {
-	case cat == "image" && !f.Photos && !f.Files,
-		cat == "audio" && !f.VoiceMessages && !f.Files,
-		(cat == "video" || cat == "file") && !f.Files:
-		disabled(w)
-		return
+	if code, msg := refuse(ext); code != 0 {
+		httpError(w, code, msg)
+		return savedFile{}, false
 	}
 
 	dir := s.uploadDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		serverError(w, err)
-		return
+		return savedFile{}, false
 	}
 	name := randomHex(12) + ext
 	out, err := os.Create(filepath.Join(dir, name))
 	if err != nil {
 		serverError(w, err)
-		return
+		return savedFile{}, false
 	}
 	defer out.Close()
 	size, err := io.Copy(out, file)
 	if err != nil {
 		os.Remove(out.Name())
 		httpError(w, http.StatusBadRequest, "upload failed or file is too large")
-		return
+		return savedFile{}, false
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"url": "/uploads/" + name, "name": header.Filename, "size": size})
+	return savedFile{URL: "/uploads/" + name, Name: header.Filename, Ext: ext, Size: size}, true
 }
 
 var uploadNameRe = regexp.MustCompile(`^[a-f0-9]{24}\.[a-z0-9]{1,10}$`)

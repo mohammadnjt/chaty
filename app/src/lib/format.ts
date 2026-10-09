@@ -45,6 +45,14 @@ export function formatLastSeen(t: number): string {
   return `last seen ${dateFmt.format(t)}`;
 }
 
+/** Story age: just now · 12m ago · 5h ago */
+export function formatAgo(t: number): string {
+  const diff = Date.now() - t;
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  return `${Math.floor(diff / 3_600_000)}h ago`;
+}
+
 /** 0:07 · 12:45 · 1:02:03 */
 export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));

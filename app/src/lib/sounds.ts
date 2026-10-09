@@ -2,6 +2,10 @@
 import { vibrate } from './native';
 
 let ctx: AudioContext | null = null;
+// Tones heard during a call get their own context, opened once the microphone
+// is live: Android then plays them like the call itself, so they follow the
+// earpiece / speaker / earphones choice instead of always using the speaker.
+let callCtx: AudioContext | null = null;
 let loop: number | undefined;
 
 function audio(): AudioContext | null {
@@ -14,8 +18,24 @@ function audio(): AudioContext | null {
   }
 }
 
-function note(freqs: number[], start: number, dur: number, gain: number, type: OscillatorType = 'sine') {
-  const c = audio();
+function callTones(): AudioContext | null {
+  try {
+    callCtx ??= new AudioContext();
+    if (callCtx.state === 'suspended') void callCtx.resume();
+    return callCtx;
+  } catch {
+    return audio();
+  }
+}
+
+/** The call is over: release its tone context once the last tone has played. */
+export function releaseCallTones(after = 0) {
+  const c = callCtx;
+  callCtx = null;
+  if (c) window.setTimeout(() => void c.close().catch(() => {}), after);
+}
+
+function note(freqs: number[], start: number, dur: number, gain: number, type: OscillatorType = 'sine', c = audio()) {
   if (!c) return;
   const t = c.currentTime + start;
   const g = c.createGain();
@@ -42,7 +62,7 @@ function repeat(play: () => void, every: number) {
 
 /** What the caller hears while the other phone rings. */
 export function playRingback() {
-  repeat(() => note([440, 480], 0, 1.5, 0.045), 4000);
+  repeat(() => note([440, 480], 0, 1.5, 0.045, 'sine', callTones()), 4000);
 }
 
 /** Incoming call ringtone: a soft rising arpeggio. */
@@ -56,8 +76,10 @@ export function playRingtone() {
 
 export function playHangup() {
   stopTones();
-  note([620], 0, 0.16, 0.05);
-  note([460], 0.18, 0.22, 0.05);
+  const c = callCtx ?? audio();
+  note([620], 0, 0.16, 0.05, 'sine', c);
+  note([460], 0.18, 0.22, 0.05, 'sine', c);
+  releaseCallTones(800);
 }
 
 export function playMessage() {

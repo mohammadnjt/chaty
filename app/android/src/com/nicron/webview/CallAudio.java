@@ -5,6 +5,8 @@ import android.content.pm.PackageManager;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
+import android.media.AudioPlaybackConfiguration;
+import android.media.audiofx.AcousticEchoCanceler;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -21,7 +23,12 @@ import android.webkit.WebView;
  * never use the earpiece. This routes calls the way a phone app does:
  * Bluetooth or wired earphones when connected, otherwise the loudspeaker for
  * video calls and the earpiece for voice calls, with a speaker toggle.
- * Routing is best effort: a failure here must never break the call.
+ *
+ * Chromium only uses communication mode on phones with a hardware echo
+ * canceller (the same check is made here); elsewhere call audio is ordinary
+ * media that Android already sends to connected earphones, so it is left
+ * alone ("media" route). Routing is best effort: a failure here must never
+ * break the call.
  */
 final class CallAudio {
     private static final String TAG = "ChatyAudio";
@@ -33,6 +40,7 @@ final class CallAudio {
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private boolean active;
+    private boolean voice; // Chromium plays the call in communication mode
     private boolean speaker; // loudspeaker when no earphones are in use
     private boolean speakerChosen; // the user tapped the speaker button
     private boolean scoOn;
@@ -82,10 +90,40 @@ final class CallAudio {
         });
     }
 
-    /** speaker | earpiece | wired | bluetooth, or "" outside a call. */
+    /** speaker | earpiece | wired | bluetooth | media, or "" outside a call. */
     @JavascriptInterface
     public String route() {
         return route;
+    }
+
+    /** One line for call reports: how Android is actually playing the call. */
+    @JavascriptInterface
+    public String debug() {
+        StringBuilder b = new StringBuilder();
+        try {
+            b.append("sdk=").append(Build.VERSION.SDK_INT)
+                    .append(" aec=").append(AcousticEchoCanceler.isAvailable())
+                    .append(" mode=").append(am.getMode())
+                    .append(" spk=").append(am.isSpeakerphoneOn())
+                    .append(" sco=").append(am.isBluetoothScoOn());
+            if (Build.VERSION.SDK_INT >= 31) {
+                AudioDeviceInfo dev = am.getCommunicationDevice();
+                b.append(" dev=").append(dev == null ? "none" : String.valueOf(dev.getType()));
+            }
+            if (Build.VERSION.SDK_INT >= 26) {
+                // Usage of each sound this app is playing: 1 media, 2 voice call.
+                b.append(" play=");
+                for (AudioPlaybackConfiguration c : am.getActivePlaybackConfigurations()) {
+                    b.append(c.getAudioAttributes().getUsage()).append(',');
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 31 && activity.checkSelfPermission("android.permission.BLUETOOTH_CONNECT") != PackageManager.PERMISSION_GRANTED) {
+                b.append(" bt-perm=no");
+            }
+        } catch (Exception e) {
+            b.append(" err=").append(e.getClass().getSimpleName());
+        }
+        return b.toString();
     }
 
     // ---------- routing (main thread) ----------
@@ -94,11 +132,16 @@ final class CallAudio {
         try {
             if (!active) {
                 active = true;
+                voice = AcousticEchoCanceler.isAvailable();
                 savedMode = am.getMode();
                 speaker = video;
                 speakerChosen = false;
                 activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                watchDevices(true);
+                if (voice) watchDevices(true);
+            }
+            if (!voice) {
+                setRoute("media");
+                return;
             }
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             askForBluetooth();
@@ -112,6 +155,11 @@ final class CallAudio {
         if (!active) return;
         active = false;
         try {
+            activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            if (!voice) {
+                setRoute("");
+                return;
+            }
             watchDevices(false);
             if (Build.VERSION.SDK_INT >= 31) {
                 am.clearCommunicationDevice();
@@ -120,7 +168,6 @@ final class CallAudio {
                 am.setSpeakerphoneOn(false);
             }
             am.setMode(savedMode == AudioManager.MODE_IN_COMMUNICATION ? AudioManager.MODE_NORMAL : savedMode);
-            activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } catch (Exception e) {
             Log.w(TAG, "stop", e);
         }
@@ -137,7 +184,7 @@ final class CallAudio {
 
     /** Re-applies the route once the permission answer arrives. */
     void onPermissionResult() {
-        if (active) apply();
+        apply();
     }
 
     private void watchDevices(boolean on) {
@@ -180,7 +227,7 @@ final class CallAudio {
     };
 
     private void apply() {
-        if (!active) return;
+        if (!active || !voice) return;
         String want;
         if (speaker && speakerChosen) want = "speaker";
         else if (hasBluetoothDevice()) want = "bluetooth";

@@ -22,6 +22,7 @@ import {
   useChat,
 } from './chat';
 import { loadConfig } from './config';
+import { resetStories } from './stories';
 import { toast } from './toast';
 
 interface AuthState {
@@ -95,6 +96,7 @@ function clearSession() {
   storage.remove(ME);
   setApiToken(null);
   resetChat();
+  resetStories();
   useAuth.setState({ status: 'guest', me: null, pendingCount: 0 });
   navigate('/', { replace: true });
 }
