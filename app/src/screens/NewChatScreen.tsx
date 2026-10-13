@@ -4,7 +4,7 @@ import Avatar from '../components/Avatar';
 import { api, errorText } from '../lib/api';
 import { goBack, navigate } from '../lib/router';
 import type { User } from '../lib/types';
-import { addConversation } from '../store/chat';
+import { addConversation, useChat } from '../store/chat';
 import { useConfig } from '../store/config';
 import { toast } from '../store/toast';
 
@@ -164,13 +164,11 @@ export function NewChatScreen() {
   );
 }
 
-export function NewGroupScreen() {
+/** Picking people for a group: who's ticked, and the search that found each (the server checks you may add them). */
+function usePicker() {
   const [q, setQ] = useState('');
   const users = useUserSearch(q);
-  const [title, setTitle] = useState('');
-  // picked user -> the search that found them (lets the server check you may add them)
   const [picked, setPicked] = useState<Map<number, { user: User; query: string }>>(new Map());
-  const [busy, setBusy] = useState(false);
 
   function toggle(u: User) {
     setPicked((m) => {
@@ -181,12 +179,68 @@ export function NewGroupScreen() {
     });
   }
 
+  function queries() {
+    const out: Record<number, string> = {};
+    for (const [id, p] of picked) if (p.query) out[id] = p.query;
+    return out;
+  }
+
+  return { q, setQ, users, picked, toggle, queries };
+}
+
+/** The picked people as chips, the search, and results to tick (minus `exclude`). */
+function PickList({ picker, exclude }: { picker: ReturnType<typeof usePicker>; exclude?: Set<number> }) {
+  const { q, setQ, users, picked, toggle } = picker;
+  return (
+    <>
+      {picked.size > 0 && (
+        <div className="picked">
+          {[...picked.values()].map(({ user: u }) => (
+            <button key={u.id} className="picked-chip" onClick={() => toggle(u)}>
+              <Avatar name={u.name} src={u.avatar} size={24} ring={false} />
+              {u.name.split(' ')[0]} ✕
+            </button>
+          ))}
+        </div>
+      )}
+      <SearchField value={q} onChange={setQ} />
+      <div className="scroll list">
+        <Results
+          q={q}
+          users={users && exclude ? users.filter((u) => !exclude.has(u.id)) : users}
+          render={(u) => {
+            const on = picked.has(u.id);
+            return (
+              <button key={u.id} className="user-row" onClick={() => toggle(u)}>
+                <Avatar name={u.name} src={u.avatar} size={48} online={u.online} />
+                <div className="user-row-body">
+                  <span className="user-name" dir="auto">
+                    {u.name}
+                  </span>
+                  <span className="user-sub" dir="auto">
+                    {sub(u)}
+                  </span>
+                </div>
+                <span className={`check ${on ? 'on' : ''}`}>{on && <Check size={16} strokeWidth={3} />}</span>
+              </button>
+            );
+          }}
+        />
+      </div>
+    </>
+  );
+}
+
+export function NewGroupScreen() {
+  const picker = usePicker();
+  const { picked } = picker;
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+
   async function create() {
     setBusy(true);
     try {
-      const queries: Record<number, string> = {};
-      for (const [id, p] of picked) if (p.query) queries[id] = p.query;
-      const c = await api.createGroup(title.trim(), [...picked.keys()], queries);
+      const c = await api.createGroup(title.trim(), [...picked.keys()], picker.queries());
       addConversation(c);
       navigate(`/chat/${c.id}`, { replace: true });
     } catch (e) {
@@ -220,41 +274,41 @@ export function NewGroupScreen() {
           onChange={(e) => setTitle(e.target.value)}
         />
       </div>
-      {picked.size > 0 && (
-        <div className="picked">
-          {[...picked.values()].map(({ user: u }) => (
-            <button key={u.id} className="picked-chip" onClick={() => toggle(u)}>
-              <Avatar name={u.name} src={u.avatar} size={24} ring={false} />
-              {u.name.split(' ')[0]} ✕
-            </button>
-          ))}
-        </div>
-      )}
-      <SearchField value={q} onChange={setQ} />
-      <div className="scroll list">
-        <Results
-          q={q}
-          users={users}
-          render={(u) => {
-            const on = picked.has(u.id);
-            return (
-              <button key={u.id} className="user-row" onClick={() => toggle(u)}>
-                <Avatar name={u.name} src={u.avatar} size={48} online={u.online} />
-                <div className="user-row-body">
-                  <span className="user-name" dir="auto">
-                    {u.name}
-                  </span>
-                  <span className="user-sub" dir="auto">
-                    {sub(u)}
-                  </span>
-                </div>
-                <span className={`check ${on ? 'on' : ''}`}>{on && <Check size={16} strokeWidth={3} />}</span>
-              </button>
-            );
-          }}
-        />
-      </div>
+      <PickList picker={picker} />
     </div>
   );
 }
 
+/** A group admin adds people to the group. */
+export function AddMembersScreen({ id }: { id: number }) {
+  const picker = usePicker();
+  const conv = useChat((s) => s.conversations[id]);
+  const [busy, setBusy] = useState(false);
+  const members = new Set(conv?.members.map((m) => m.id));
+
+  async function add() {
+    setBusy(true);
+    try {
+      addConversation(await api.addMembers(id, [...picker.picked.keys()], picker.queries()));
+      toast(picker.picked.size > 1 ? 'Members added' : 'Member added');
+      goBack(`/chat/${id}`);
+    } catch (e) {
+      toast(errorText(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="screen push">
+      <PageHeader
+        title="Add members"
+        action={
+          <button className="btn btn-primary small" disabled={!picker.picked.size || busy} onClick={add}>
+            Add
+          </button>
+        }
+      />
+      <PickList picker={picker} exclude={members} />
+    </div>
+  );
+}

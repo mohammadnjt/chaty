@@ -146,6 +146,13 @@ export const api = {
   mute: (id: number, muted: boolean) => request('POST', `/api/conversations/${id}/mute`, { muted }),
   clearHistory: (id: number) => request('POST', `/api/conversations/${id}/clear`),
   leaveGroup: (id: number) => request('POST', `/api/conversations/${id}/leave`),
+  updateGroup: (id: number, patch: { title?: string; avatar?: string; onlyAdmins?: boolean }) =>
+    request<Conversation>('PATCH', `/api/conversations/${id}`, patch),
+  addMembers: (id: number, memberIds: number[], queries: Record<number, string> = {}) =>
+    request<Conversation>('POST', `/api/conversations/${id}/members`, { memberIds, queries }),
+  removeMember: (id: number, userId: number) => request<Conversation>('DELETE', `/api/conversations/${id}/members/${userId}`),
+  setGroupAdmin: (id: number, userId: number, admin: boolean) =>
+    request<Conversation>('POST', `/api/conversations/${id}/admins/${userId}`, { admin }),
   messages: (id: number, before = 0) =>
     request<Message[]>('GET', `/api/conversations/${id}/messages?before=${before}&limit=${PAGE_SIZE}`),
   send: (id: number, p: SendPayload) => request<Message>('POST', `/api/conversations/${id}/messages`, p),

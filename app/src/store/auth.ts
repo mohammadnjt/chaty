@@ -24,6 +24,7 @@ import {
   useChat,
 } from './chat';
 import { loadConfig } from './config';
+import { resetGroupCalls } from '../call/group';
 import { stopVoice } from './player';
 import { resetStories } from './stories';
 import { toast } from './toast';
@@ -109,6 +110,7 @@ function clearSession() {
   storage.remove(ME);
   setApiToken(null);
   stopVoice();
+  resetGroupCalls();
   resetChat();
   resetStories();
   useAuth.setState({ status: 'guest', me: null, pendingCount: 0 });

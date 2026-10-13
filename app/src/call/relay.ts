@@ -2,6 +2,8 @@
 // its mic/camera with MediaRecorder (WebM/Opus/VP8) and streams the chunks
 // over the app's own WebSocket; the other side plays them through
 // MediaSource. Slower than WebRTC (~0.5 s) but it works wherever chatting works.
+// Group calls always use it: one RelaySender for your microphone, and a
+// RelayReceiver for each of the others.
 import { socket } from '../lib/socket';
 
 const TIMESLICE = 120;
@@ -16,45 +18,30 @@ function pickMime(video: boolean): string | null {
 
 export const relaySupported = (video: boolean) => pickMime(video) !== null || (video && pickMime(false) !== null);
 
+export interface RelayStart {
+  gen: number;
+  mime: string;
+}
+
 export interface RelaySignal {
-  start?: { gen: number; mime: string };
+  start?: RelayStart;
   reset?: boolean;
 }
 
-export class MediaRelay {
-  readonly element: HTMLVideoElement;
+/** Streams the microphone (and camera) as WebM chunks: [generation][data] binary frames. */
+export class RelaySender {
   private recorder: MediaRecorder | null = null;
-  private sendGen = 0;
-  // receiving side
-  private recvGen = -1;
-  private ms: MediaSource | null = null;
-  private sb: SourceBuffer | null = null;
-  private objectUrl = '';
-  private queue: Uint8Array[] = [];
-  private early = new Map<number, Uint8Array[]>(); // chunks that beat their start signal
-  private gotData = false;
-  private trimTimer: number;
-  private resetAsked = 0;
+  private gen = 0;
   private stopped = false;
 
   constructor(
     private local: MediaStream,
     private video: boolean,
-    private signal: (s: RelaySignal) => void,
-    private onFirstData: () => void,
-  ) {
-    const el = document.createElement('video');
-    el.playsInline = true;
-    el.autoplay = true;
-    el.className = 'call-video-full';
-    el.onerror = () => this.askReset();
-    this.element = el;
-    this.trimTimer = window.setInterval(() => this.trim(), 10_000);
-  }
+    private onStart: (start: RelayStart) => void,
+  ) {}
 
-  // ---------- sending ----------
-
-  startSending() {
+  /** Starts a fresh stream (a new generation), which a receiver can decode from its first chunk. */
+  start() {
     if (this.stopped) return;
     this.recorder?.stop();
     const hasVideo = this.video && this.local.getVideoTracks().some((t) => t.readyState === 'live');
@@ -68,8 +55,8 @@ export class MediaRelay {
     } catch {
       return;
     }
-    const gen = (this.sendGen = (this.sendGen + 1) % 256);
-    this.signal({ start: { gen, mime } });
+    const gen = (this.gen = (this.gen + 1) % 256);
+    this.onStart({ gen, mime });
     rec.ondataavailable = async (e) => {
       if (!e.data.size || this.recorder !== rec) return;
       const body = new Uint8Array(await e.data.arrayBuffer());
@@ -82,15 +69,43 @@ export class MediaRelay {
     this.recorder = rec;
   }
 
-  // ---------- receiving ----------
+  stop() {
+    this.stopped = true;
+    const rec = this.recorder;
+    this.recorder = null;
+    if (rec && rec.state !== 'inactive') rec.stop();
+  }
+}
 
-  onSignal(s: RelaySignal) {
-    if (s.reset) this.startSending();
-    if (s.start) this.openStream(s.start.gen, s.start.mime);
+/** Plays one remote stream: its chunks go into MediaSource on a media element. */
+export class RelayReceiver {
+  readonly element: HTMLVideoElement;
+  private recvGen = -1;
+  private ms: MediaSource | null = null;
+  private sb: SourceBuffer | null = null;
+  private objectUrl = '';
+  private queue: Uint8Array[] = [];
+  private early = new Map<number, Uint8Array[]>(); // chunks that beat their start signal
+  private gotData = false;
+  private trimTimer: number;
+  private resetAsked = 0;
+  private stopped = false;
+
+  constructor(
+    private onReset: () => void, // the stream broke: ask the sender for a fresh one
+    private onFirstData: () => void = () => {},
+  ) {
+    const el = document.createElement('video');
+    el.playsInline = true;
+    el.autoplay = true;
+    el.className = 'call-video-full';
+    el.onerror = () => this.askReset();
+    this.element = el;
+    this.trimTimer = window.setInterval(() => this.trim(), 10_000);
   }
 
-  onChunk(buf: ArrayBuffer) {
-    const bytes = new Uint8Array(buf);
+  /** A [generation][data] frame. */
+  onChunk(bytes: Uint8Array) {
     if (bytes.length < 2) return;
     const gen = bytes[0];
     const data = bytes.subarray(1);
@@ -105,8 +120,8 @@ export class MediaRelay {
     }
   }
 
-  private openStream(gen: number, mime: string) {
-    if (!MediaSource.isTypeSupported(mime)) return;
+  open({ gen, mime }: RelayStart) {
+    if (this.stopped || !MediaSource.isTypeSupported(mime)) return;
     this.closeStream();
     this.recvGen = gen;
     this.queue = this.early.get(gen) ?? [];
@@ -180,7 +195,7 @@ export class MediaRelay {
     if (this.stopped || Date.now() - this.resetAsked < 1500) return;
     this.resetAsked = Date.now();
     this.closeStream();
-    this.signal({ reset: true });
+    this.onReset();
   }
 
   private closeStream() {
@@ -206,12 +221,44 @@ export class MediaRelay {
   stop() {
     this.stopped = true;
     clearInterval(this.trimTimer);
-    const rec = this.recorder;
-    this.recorder = null;
-    if (rec && rec.state !== 'inactive') rec.stop();
     this.closeStream();
     this.element.pause();
     this.element.removeAttribute('src');
     this.element.load();
+  }
+}
+
+/** A 1:1 call over the relay: your stream out, theirs in. */
+export class MediaRelay {
+  readonly element: HTMLVideoElement;
+  private sender: RelaySender;
+  private receiver: RelayReceiver;
+
+  constructor(local: MediaStream, video: boolean, signal: (s: RelaySignal) => void, onFirstData: () => void) {
+    this.sender = new RelaySender(local, video, (start) => signal({ start }));
+    this.receiver = new RelayReceiver(() => signal({ reset: true }), onFirstData);
+    this.element = this.receiver.element;
+  }
+
+  startSending() {
+    this.sender.start();
+  }
+
+  onSignal(s: RelaySignal) {
+    if (s.reset) this.sender.start();
+    if (s.start) this.receiver.open(s.start);
+  }
+
+  onChunk(buf: ArrayBuffer) {
+    this.receiver.onChunk(new Uint8Array(buf));
+  }
+
+  setVolume(v: number) {
+    this.receiver.setVolume(v);
+  }
+
+  stop() {
+    this.sender.stop();
+    this.receiver.stop();
   }
 }

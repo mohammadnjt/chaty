@@ -16,6 +16,19 @@ export async function shrinkImage(file: File): Promise<{ blob: Blob; name: strin
   }
 }
 
+/** A profile or group photo: the middle square, at most 512px, as JPEG. */
+export async function squareAvatar(file: File): Promise<Blob> {
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height);
+  const size = Math.min(512, side);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  canvas.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not read that image'))), 'image/jpeg', 0.88),
+  );
+}
+
 /** Pasted screenshots have no name; give them one with the right extension. */
 export function fileNameFor(file: File): string {
   if (file.name && file.name !== 'image.png') return file.name;

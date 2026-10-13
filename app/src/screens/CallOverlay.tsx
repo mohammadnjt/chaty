@@ -31,7 +31,7 @@ import Scenery from '../components/Scenery';
 import { formatDuration } from '../lib/format';
 import { callAudio } from '../lib/native';
 
-function useNow(active: boolean) {
+export function useNow(active: boolean) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!active) return;
@@ -175,7 +175,7 @@ function Waveform({ streams }: { streams: (MediaStream | null)[] }) {
   );
 }
 
-function CallButton({
+export function CallButton({
   onClick,
   label,
   variant = 'dark',

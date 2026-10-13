@@ -60,6 +60,9 @@ export interface Conversation {
   createdAt: number;
   muted: boolean;
   blocked: boolean; // you blocked the other person (1:1 chats)
+  ownerId?: number; // groups: who made it
+  admins?: number[]; // groups: who runs it
+  onlyAdmins?: boolean; // groups: only admins send messages
 }
 
 export type CallKind = 'audio' | 'video';

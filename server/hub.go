@@ -147,19 +147,21 @@ type Hub struct {
 	configFor func(userID int64) map[string]any
 	push      *Pusher
 
-	mu      sync.Mutex
-	clients map[int64]map[*Client]struct{}
-	calls   map[string]*activeCall
-	inCall  map[int64]string // userID -> callID
+	mu         sync.Mutex
+	clients    map[int64]map[*Client]struct{}
+	calls      map[string]*activeCall
+	groupCalls map[int64]*groupCall // by conversation
+	inCall     map[int64]string     // userID -> callID (group calls: "group-<conversation>")
 }
 
 func newHub(store *Store, settings *SettingsStore) *Hub {
 	return &Hub{
-		store:    store,
-		settings: settings,
-		clients:  map[int64]map[*Client]struct{}{},
-		calls:    map[string]*activeCall{},
-		inCall:   map[int64]string{},
+		store:      store,
+		settings:   settings,
+		clients:    map[int64]map[*Client]struct{}{},
+		calls:      map[string]*activeCall{},
+		groupCalls: map[int64]*groupCall{},
+		inCall:     map[int64]string{},
 	}
 }
 
@@ -190,6 +192,7 @@ func (h *Hub) serve(w http.ResponseWriter, r *http.Request, user UserRec) {
 	}
 	c.emit("hello", map[string]any{"online": online})
 	h.resendRinging(c)
+	h.sendGroupCalls(c)
 	if first {
 		h.sendToUsers(h.store.PresenceAudience(user.ID), "presence", map[string]any{"userId": user.ID, "online": true})
 	}
@@ -208,6 +211,7 @@ func (h *Hub) unregister(c *Client) {
 	h.mu.Unlock()
 
 	h.dropCallsOf(c)
+	h.dropGroupCallsOf(c)
 
 	if last {
 		seen := h.store.TouchLastSeen(c.userID)
@@ -332,6 +336,12 @@ func (h *Hub) handle(c *Client, in inbound) {
 		h.callResume(c, in.Data)
 	case "call:diag":
 		h.callDiag(c, in.Data)
+	case "gcall:join":
+		h.groupCallJoin(c, in.Data)
+	case "gcall:leave":
+		h.groupCallLeave(c, in.Data)
+	case "gcall:signal":
+		h.groupCallSignal(c, in.Data)
 	case "visibility":
 		var d struct {
 			Hidden bool `json:"hidden"`
@@ -345,6 +355,9 @@ func (h *Hub) handle(c *Client, in inbound) {
 // relayMedia forwards a binary media chunk to the other side of the caller's
 // active call. This is the fallback path when WebRTC can't get through.
 func (h *Hub) relayMedia(c *Client, data []byte) {
+	if h.relayGroupMedia(c, data) {
+		return
+	}
 	var target *Client
 	h.mu.Lock()
 	if id, ok := h.inCall[c.userID]; ok {

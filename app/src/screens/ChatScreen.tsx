@@ -1,6 +1,7 @@
 import { Ban, Bell, BellOff, ChevronDown, ChevronLeft, EllipsisVertical, LogOut, Paperclip, Phone, Pin, Trash2, Video, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { startCall } from '../call/engine';
+import { joinGroupCall, useGroupCall } from '../call/group';
 import Avatar from '../components/Avatar';
 import Composer from '../components/Composer';
 import MessageBubble from '../components/MessageBubble';
@@ -19,6 +20,7 @@ import {
   deleteMessage,
   ensureConversation,
   forwardMessage,
+  isGroupAdmin,
   loadMessages,
   loadOlder,
   markRead,
@@ -37,12 +39,12 @@ import {
 } from '../store/chat';
 import { useConfig } from '../store/config';
 import { toast } from '../store/toast';
+import { GroupAdminMenu, GroupHero, GroupMembers } from './GroupInfo';
 
 const NAME_COLORS = ['#c4b5fd', '#f9a8d4', '#93c5fd', '#fcd34d', '#86efac', '#fdba74', '#a5f3fc', '#f0abfc'];
 const nameColor = (id: number) => NAME_COLORS[id % NAME_COLORS.length];
 
 function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onClose: () => void }) {
-  const presence = useChat((s) => s.presence);
   const f = useConfig((s) => s.features);
   const peer = conv.type === 'direct' ? peerOf(conv, me) : null;
   const saved = conv.type === 'saved';
@@ -98,8 +100,25 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="sheet-hero">
-          <Avatar name={title} src={peer ? peer.avatar : conv.avatar} group={!peer && !saved} saved={saved} size={96} storyOf={peer?.id} />
-          <h2 dir="auto">{title}</h2>
+          {conv.type === 'group' ? (
+            <GroupHero
+              conv={conv}
+              me={me}
+              onCall={
+                f.voiceCalls
+                  ? () => {
+                      onClose();
+                      void joinGroupCall(conv.id);
+                    }
+                  : undefined
+              }
+            />
+          ) : (
+            <>
+              <Avatar name={title} src={peer?.avatar} saved={saved} size={96} storyOf={peer?.id} />
+              <h2 dir="auto">{title}</h2>
+            </>
+          )}
           {peer ? (
             <>
               <p className="muted ltr-inline">
@@ -129,12 +148,11 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
             </>
           ) : saved ? (
             <p className="muted">Notes and messages you save. Only you can see them.</p>
-          ) : (
-            <p className="muted">{conv.members.length} members</p>
-          )}
+          ) : null}
         </div>
 
         <div className="sheet-menu">
+          {isGroupAdmin(conv, me) && <GroupAdminMenu conv={conv} onClose={onClose} />}
           {!saved && (
             <button className="menu-item" onClick={() => void setMuted(conv.id, !conv.muted)}>
               {conv.muted ? <Bell size={19} /> : <BellOff size={19} />}
@@ -159,25 +177,7 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
           )}
         </div>
 
-        {conv.type === 'group' && (
-          <div className="sheet-list">
-            <h3 className="section-title">Members</h3>
-            {conv.members.map((m) => (
-              <div key={m.id} className="user-row static">
-                <Avatar name={m.name} src={m.avatar} size={42} online={!!presence[m.id]?.online} storyOf={m.id} />
-                <div className="user-row-body">
-                  <span className="user-name" dir="auto">
-                    {m.name}
-                    {m.id === me && ' (you)'}
-                  </span>
-                  <span className="user-sub" dir="auto">
-                    {m.username ? `@${m.username}` : m.about}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {conv.type === 'group' && <GroupMembers conv={conv} me={me} />}
       </div>
     </div>
   );
@@ -207,6 +207,8 @@ export default function ChatScreen({ id }: { id: number }) {
   const hasMore = useChat((s) => s.hasMore[id]);
   const presence = useChat((s) => s.presence);
   const typingMap = useChat((s) => s.typing[id]);
+  const groupRoom = useGroupCall((s) => s.rooms[id]);
+  const inGroupCall = useGroupCall((s) => s.conversationId === id);
   const f = useConfig((s) => s.features);
   const [missing, setMissing] = useState(false);
   const [image, setImage] = useState<string | null>(null);
@@ -453,11 +455,26 @@ export default function ChatScreen({ id }: { id: number }) {
             <Video size={23} />
           </button>
         )}
+        {conv?.type === 'group' && f.voiceCalls && (
+          <button className="icon-btn accent" onClick={() => void joinGroupCall(id)} aria-label="Group call">
+            <Phone size={21} />
+          </button>
+        )}
         <button className="icon-btn accent" onClick={() => setInfo(true)} aria-label="Details">
           <EllipsisVertical size={21} />
         </button>
       </header>
       <PlayerBar />
+      {groupRoom && !inGroupCall && (
+        <div className="pinned-bar gcall-bar" onClick={() => void joinGroupCall(id)}>
+          <Phone size={16} />
+          <div className="pinned-text">
+            <span className="pinned-title">Group call</span>
+            <span className="pinned-body">{groupRoom.participants.length} in the call</span>
+          </div>
+          <button className="btn btn-primary small">Join</button>
+        </div>
+      )}
 
       {pinned && (
         <div className="pinned-bar" onClick={() => jumpTo(pinned.id)}>
@@ -568,6 +585,10 @@ export default function ChatScreen({ id }: { id: number }) {
           <button className="btn btn-ghost small" onClick={() => void setBlocked(id, peer.id, false)}>
             Unblock
           </button>
+        </div>
+      ) : conv?.onlyAdmins && !isGroupAdmin(conv, me) ? (
+        <div className="blocked-bar">
+          <span>Only admins can send messages</span>
         </div>
       ) : (
       <Composer

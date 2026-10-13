@@ -9,9 +9,10 @@ import AdminScreen from './screens/AdminScreen';
 import AuthScreen from './screens/AuthScreen';
 import CallOverlay, { RemoteAudio } from './screens/CallOverlay';
 import CallsScreen from './screens/CallsScreen';
+import GroupCallOverlay from './screens/GroupCallOverlay';
 import ChatScreen from './screens/ChatScreen';
 import ChatsScreen from './screens/ChatsScreen';
-import { NewChatScreen, NewGroupScreen } from './screens/NewChatScreen';
+import { AddMembersScreen, NewChatScreen, NewGroupScreen } from './screens/NewChatScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import StatusScreen from './screens/StatusScreen';
 import { initAuth, useAuth } from './store/auth';
@@ -53,6 +54,8 @@ function ConnectionBar() {
 
 function Screen({ path }: { path: string }) {
   const isAdmin = useAuth((s) => s.me?.role === 'admin');
+  const add = matchPath('/chat/:id/add', path);
+  if (add) return <AddMembersScreen id={Number(add.id)} />;
   const chat = matchPath('/chat/:id', path);
   if (chat) return <ChatScreen key={chat.id} id={Number(chat.id)} />;
   switch (path) {
@@ -97,6 +100,7 @@ export default function App() {
           <ConnectionBar />
           <StoryHost />
           <CallOverlay />
+          <GroupCallOverlay />
           <RemoteAudio />
         </>
       )}

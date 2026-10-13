@@ -10,7 +10,7 @@ class Socket {
   private retryTimer: number | undefined;
   private handlers = new Map<string, Set<Handler>>();
   private statusHandlers = new Set<(connected: boolean) => void>();
-  private binaryHandler: ((data: ArrayBuffer) => void) | null = null;
+  private binaryHandlers = new Set<(data: ArrayBuffer) => void>();
   private heartbeat: number | undefined;
   private lastSeen = 0;
   connected = false;
@@ -54,8 +54,10 @@ class Socket {
     return true;
   }
 
-  onBinary(handler: ((data: ArrayBuffer) => void) | null) {
-    this.binaryHandler = handler;
+  /** Calls handler with every binary frame (1:1 and group calls each listen). */
+  onBinary(handler: (data: ArrayBuffer) => void): () => void {
+    this.binaryHandlers.add(handler);
+    return () => this.binaryHandlers.delete(handler);
   }
 
   on(type: string, handler: Handler): () => void {
@@ -97,7 +99,7 @@ class Socket {
     ws.onmessage = (e) => {
       this.lastSeen = Date.now();
       if (e.data instanceof ArrayBuffer) {
-        this.binaryHandler?.(e.data);
+        for (const h of this.binaryHandlers) h(e.data);
         return;
       }
       let msg: { type: string; data: unknown };

@@ -53,6 +53,9 @@ export function titleOf(c: Conversation, me: number): string {
 
 export const activityOf = (c: Conversation) => c.lastMessage?.createdAt ?? c.createdAt;
 
+/** Whether uid runs this group. */
+export const isGroupAdmin = (c: Conversation, uid: number) => c.type === 'group' && !!c.admins?.includes(uid);
+
 export function previewOf(m: Pick<Message, 'type' | 'body' | 'fileName'> | null | undefined): string {
   if (!m) return '';
   switch (m.type) {

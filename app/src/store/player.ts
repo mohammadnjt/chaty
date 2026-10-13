@@ -5,6 +5,7 @@
 // (window.ChatyPlayer), browsers do the same through the Media Session API.
 import { create } from 'zustand';
 import { useCall } from '../call/engine';
+import { useGroupCall } from '../call/group';
 import { mediaUrl, storage } from '../lib/config';
 import type { Message } from '../lib/types';
 import { nameOf, titleOf, useChat } from './chat';
@@ -226,5 +227,8 @@ window.addEventListener('chaty-player', (e) => {
 
 // A call takes over the audio.
 useCall.subscribe((s, prev) => {
+  if (s.phase !== 'idle' && prev.phase === 'idle') pauseVoice();
+});
+useGroupCall.subscribe((s, prev) => {
   if (s.phase !== 'idle' && prev.phase === 'idle') pauseVoice();
 });

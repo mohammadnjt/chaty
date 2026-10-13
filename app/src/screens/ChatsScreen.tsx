@@ -1,6 +1,7 @@
-import { Bell, BellOff, Bookmark, CheckCheck, Check, CirclePlus, MessageSquare, Search, X } from 'lucide-react';
+import { Bell, BellOff, Bookmark, CheckCheck, Check, CirclePlus, MessageSquare, Phone, Search, X } from 'lucide-react';
 import { memo, useMemo, useRef, useState } from 'react';
 import Avatar from '../components/Avatar';
+import { useGroupCall } from '../call/group';
 import AppMark from '../components/AppMark';
 import PlayerBar from '../components/PlayerBar';
 import Scenery from '../components/Scenery';
@@ -45,6 +46,7 @@ const ChatRow = memo(function ChatRow({
 }) {
   const peer = c.type === 'direct' ? peerOf(c, me) : null;
   const title = titleOf(c, me);
+  const liveCall = useGroupCall((s) => !!s.rooms[c.id]);
   const last = c.lastMessage;
   const mine = last?.senderId === me;
   const read =
@@ -67,6 +69,7 @@ const ChatRow = memo(function ChatRow({
           <span className="chat-name" dir="auto">
             {title}
             {c.muted && <BellOff size={14} className="muted-icon" />}
+            {liveCall && <Phone size={14} className="live-call" aria-label="Group call going on" />}
           </span>
           <span className={`chat-time ${c.unread ? 'accent' : ''}`}>{last ? formatListTime(last.createdAt) : ''}</span>
         </div>

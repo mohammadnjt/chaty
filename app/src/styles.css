@@ -2641,6 +2641,114 @@ button.user-row:active {
   transition: width 0.25s linear;
 }
 
+/* A call going on in this group. */
+.gcall-bar {
+  color: var(--ok);
+}
+
+.gcall-bar .pinned-text {
+  border-left-color: var(--ok);
+}
+
+.live-call {
+  margin-left: 6px;
+  vertical-align: -2px;
+  color: var(--ok);
+}
+
+/* Group call screen: everyone in it, you first. */
+.gcall-people {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  align-content: center;
+  gap: 18px 8px;
+  padding: 12px 20px;
+  overflow-y: auto;
+}
+
+.gcall-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gcall-avatar {
+  position: relative;
+}
+
+.gcall-muted {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  border: 2px solid rgb(var(--surface-2));
+}
+
+.gcall-name {
+  max-width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gcall-status {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  margin: 0 0 6px;
+}
+
+/* Group info: role tags, admin actions, renaming. */
+.role-tag {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(154, 107, 255, 0.18);
+  color: var(--accent-2);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 12px 70px;
+}
+
+.group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-rename {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 8px;
+}
+
+.group-rename .field {
+  flex: 1;
+  min-width: 0;
+}
+
 .pinned-bar {
   position: relative;
   z-index: 2;

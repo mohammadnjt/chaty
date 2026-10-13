@@ -56,6 +56,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/conversations/{id}/mute", s.authed(s.muteConversation))
 	mux.HandleFunc("POST /api/conversations/{id}/clear", s.authed(s.clearConversation))
 	mux.HandleFunc("POST /api/conversations/{id}/leave", s.authed(s.leaveConversation))
+	mux.HandleFunc("PATCH /api/conversations/{id}", s.authed(s.updateGroup))
+	mux.HandleFunc("POST /api/conversations/{id}/members", s.authed(s.addMembers))
+	mux.HandleFunc("DELETE /api/conversations/{id}/members/{uid}", s.authed(s.removeMember))
+	mux.HandleFunc("POST /api/conversations/{id}/admins/{uid}", s.authed(s.setGroupAdmin))
 	mux.HandleFunc("PATCH /api/messages/{id}", s.authed(s.editMessage))
 	mux.HandleFunc("DELETE /api/messages/{id}", s.authed(s.deleteMessage))
 	mux.HandleFunc("POST /api/messages/{id}/react", s.authed(s.reactMessage))
@@ -507,6 +511,9 @@ func (s *Server) unblockUser(w http.ResponseWriter, r *http.Request, me UserRec)
 
 // blockReason explains why a 1:1 conversation is closed, or "" if it isn't.
 func (s *Server) blockReason(conv, me int64) string {
+	if !s.store.CanPost(conv, me) {
+		return "only admins can send messages in this group"
+	}
 	peer := s.store.DirectPeer(conv, me)
 	switch {
 	case peer == 0:
@@ -548,12 +555,155 @@ func (s *Server) leaveConversation(w http.ResponseWriter, r *http.Request, me Us
 		return
 	}
 	s.hub.sendToUsers([]int64{me.ID}, "conversation:left", map[string]any{"conversationId": id})
+	s.hub.leaveGroupCall(id, me.ID)
+	s.sendConversation(id)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// sendConversation gives every member the group as they now see it.
+func (s *Server) sendConversation(id int64) {
 	for _, uid := range s.store.MemberIDs(id) {
 		if c, err := s.loadConversation(id, uid); err == nil {
 			s.hub.sendToUsers([]int64{uid}, "conversation", c)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// groupAdminOnly checks that me runs the group in the path.
+func (s *Server) groupAdminOnly(w http.ResponseWriter, r *http.Request, me UserRec) (int64, bool) {
+	id := pathID(r)
+	if t, _ := s.store.ConvType(id); t != "group" || !s.store.IsMember(id, me.ID) {
+		httpError(w, http.StatusNotFound, "group not found")
+		return 0, false
+	}
+	if !s.store.GroupAdmin(id, me.ID) {
+		httpError(w, http.StatusForbidden, "only the group's admins can do that")
+		return 0, false
+	}
+	return id, true
+}
+
+// updateGroup changes a group's name, photo or "only admins send messages".
+func (s *Server) updateGroup(w http.ResponseWriter, r *http.Request, me UserRec) {
+	id, ok := s.groupAdminOnly(w, r, me)
+	if !ok {
+		return
+	}
+	var in struct {
+		Title      *string `json:"title"`
+		Avatar     *string `json:"avatar"`
+		OnlyAdmins *bool   `json:"onlyAdmins"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if in.Title != nil {
+		*in.Title = strings.TrimSpace(*in.Title)
+		if *in.Title == "" || utf8.RuneCountInString(*in.Title) > 64 {
+			httpError(w, http.StatusBadRequest, "group name must be 1-64 characters")
+			return
+		}
+	}
+	if in.Avatar != nil && *in.Avatar != "" && !strings.HasPrefix(*in.Avatar, "/uploads/") {
+		httpError(w, http.StatusBadRequest, "invalid photo")
+		return
+	}
+	s.store.UpdateGroup(id, func(c *ConvRec) {
+		if in.Title != nil {
+			c.Title = *in.Title
+		}
+		if in.Avatar != nil {
+			c.Avatar = *in.Avatar
+		}
+		if in.OnlyAdmins != nil {
+			c.OnlyAdmins = *in.OnlyAdmins
+		}
+	})
+	s.sendConversation(id)
+	c, _ := s.loadConversation(id, me.ID)
+	writeJSON(w, http.StatusOK, c)
+}
+
+// addMembers adds people the admin can reach (and who haven't blocked them).
+func (s *Server) addMembers(w http.ResponseWriter, r *http.Request, me UserRec) {
+	id, ok := s.groupAdminOnly(w, r, me)
+	if !ok {
+		return
+	}
+	var in struct {
+		MemberIDs []int64           `json:"memberIds"`
+		Queries   map[string]string `json:"queries"` // id -> the search that found them
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if len(in.MemberIDs) == 0 || len(in.MemberIDs) > 500 {
+		httpError(w, http.StatusBadRequest, "pick at least one person")
+		return
+	}
+	var ids []int64
+	for _, uid := range in.MemberIDs {
+		if uid != me.ID && s.store.CanReach(me.ID, uid, in.Queries[strconv.FormatInt(uid, 10)]) && !s.store.Blocked(uid, me.ID) {
+			ids = append(ids, uid)
+		}
+	}
+	if len(s.store.AddMembers(id, ids)) == 0 {
+		httpError(w, http.StatusBadRequest, "none of these people can be added")
+		return
+	}
+	s.sendConversation(id)
+	c, _ := s.loadConversation(id, me.ID)
+	writeJSON(w, http.StatusOK, c)
+}
+
+// removeMember takes someone out of the group (not its creator).
+func (s *Server) removeMember(w http.ResponseWriter, r *http.Request, me UserRec) {
+	id, ok := s.groupAdminOnly(w, r, me)
+	if !ok {
+		return
+	}
+	uid, _ := strconv.ParseInt(r.PathValue("uid"), 10, 64)
+	if uid == me.ID {
+		httpError(w, http.StatusBadRequest, "use Leave group to leave it")
+		return
+	}
+	if c, err := s.store.Conversation(id, me.ID); err == nil && c.OwnerID == uid {
+		httpError(w, http.StatusForbidden, "the group's creator can't be removed")
+		return
+	}
+	if err := s.store.Leave(id, uid); err != nil {
+		httpError(w, http.StatusNotFound, "not in this group")
+		return
+	}
+	s.hub.sendToUsers([]int64{uid}, "conversation:left", map[string]any{"conversationId": id})
+	s.hub.leaveGroupCall(id, uid)
+	s.sendConversation(id)
+	c, _ := s.loadConversation(id, me.ID)
+	writeJSON(w, http.StatusOK, c)
+}
+
+// setGroupAdmin makes a member an admin, or not.
+func (s *Server) setGroupAdmin(w http.ResponseWriter, r *http.Request, me UserRec) {
+	id, ok := s.groupAdminOnly(w, r, me)
+	if !ok {
+		return
+	}
+	var in struct{ Admin bool }
+	if !readJSON(w, r, &in) {
+		return
+	}
+	uid, _ := strconv.ParseInt(r.PathValue("uid"), 10, 64)
+	if err := s.store.SetGroupAdmin(id, uid, in.Admin); err != nil {
+		if errors.Is(err, errNotFound) {
+			httpError(w, http.StatusNotFound, "not in this group")
+		} else {
+			httpError(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	s.sendConversation(id)
+	c, _ := s.loadConversation(id, me.ID)
+	writeJSON(w, http.StatusOK, c)
 }
 
 func (s *Server) loadConversation(id, viewer int64) (*Conversation, error) {

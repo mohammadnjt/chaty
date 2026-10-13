@@ -20,6 +20,7 @@ import Toggle from '../components/Toggle';
 import TabBar from '../components/TabBar';
 import { api, errorText } from '../lib/api';
 import { getServerUrl, isNativeShell } from '../lib/config';
+import { squareAvatar } from '../lib/media';
 import { disablePush, enablePush, pushAvailable, pushEnabled, pushPermission } from '../lib/push';
 import { setTheme, useTheme, type ThemeChoice } from '../lib/theme';
 import { navigate } from '../lib/router';
@@ -33,18 +34,6 @@ function useSocketStatus() {
   const [connected, setConnected] = useState(socket.connected);
   useEffect(() => socket.onStatus(setConnected), []);
   return connected;
-}
-
-async function squareAvatar(file: File): Promise<Blob> {
-  const bmp = await createImageBitmap(file);
-  const side = Math.min(bmp.width, bmp.height);
-  const size = Math.min(512, side);
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  canvas.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
-  return new Promise((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not read that image'))), 'image/jpeg', 0.88),
-  );
 }
 
 const THEMES: [ThemeChoice, string, typeof Moon][] = [

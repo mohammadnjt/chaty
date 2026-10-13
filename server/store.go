@@ -57,14 +57,15 @@ type SessionRec struct {
 }
 
 type ConvRec struct {
-	ID        int64  `json:"id"`
-	Type      string `json:"type"` // direct | group | saved (Saved Messages: a chat with only its owner)
-	Title     string `json:"title"`
-	Avatar    string `json:"avatar"`
-	DirectKey string `json:"directKey,omitempty"`
-	CreatedBy int64  `json:"createdBy"`
-	CreatedAt int64  `json:"createdAt"`
-	PinnedID  int64  `json:"pinnedId,omitempty"`
+	ID         int64  `json:"id"`
+	Type       string `json:"type"` // direct | group | saved (Saved Messages: a chat with only its owner)
+	Title      string `json:"title"`
+	Avatar     string `json:"avatar"`
+	DirectKey  string `json:"directKey,omitempty"`
+	CreatedBy  int64  `json:"createdBy"`
+	CreatedAt  int64  `json:"createdAt"`
+	PinnedID   int64  `json:"pinnedId,omitempty"`
+	OnlyAdmins bool   `json:"onlyAdmins,omitempty"` // groups: only admins send messages
 }
 
 type MemberRec struct {
@@ -74,6 +75,7 @@ type MemberRec struct {
 	JoinedAt   int64 `json:"joinedAt"`
 	ClearedID  int64 `json:"clearedId,omitempty"` // history up to here is hidden for this member
 	Muted      bool  `json:"muted,omitempty"`
+	Admin      bool  `json:"admin,omitempty"` // runs the group (its creator always does)
 }
 
 type MsgRec struct {
@@ -170,7 +172,10 @@ type Conversation struct {
 	Reads       map[string]int64 `json:"reads"`
 	CreatedAt   int64            `json:"createdAt"`
 	Muted       bool             `json:"muted"`
-	Blocked     bool             `json:"blocked"` // you blocked the other person (1:1 chats)
+	Blocked     bool             `json:"blocked"`              // you blocked the other person (1:1 chats)
+	OwnerID     int64            `json:"ownerId,omitempty"`    // groups: who made it
+	Admins      []int64          `json:"admins,omitempty"`     // groups: who runs it
+	OnlyAdmins  bool             `json:"onlyAdmins,omitempty"` // groups: only admins send messages
 }
 
 type CallRecord struct {
@@ -961,7 +966,7 @@ func (s *Store) ClearHistory(conv, uid int64) error {
 	return nil
 }
 
-// Leave removes uid from a group.
+// Leave removes uid from a group (they leave, or an admin removes them).
 func (s *Store) Leave(conv, uid int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1122,7 +1127,96 @@ func (s *Store) CreateGroup(title string, creator int64, memberIDs []int64) (int
 		seen[uid] = true
 		s.addMemberNowL(c.ID, uid, now+int64(i)) // keeps the creator first
 	}
+	if m := s.members[c.ID][creator]; m != nil {
+		m.Admin = true
+		s.putMember(m)
+	}
 	return c.ID, nil
+}
+
+// ---------- group admin ----------
+
+// groupAdminL says whether uid runs group c: its creator, members made
+// admin, and if none of them is left, the longest-standing member.
+func (s *Store) groupAdminL(c *ConvRec, uid int64) bool {
+	m := s.members[c.ID][uid]
+	if c.Type != "group" || m == nil {
+		return false
+	}
+	if m.Admin || uid == c.CreatedBy {
+		return true
+	}
+	for _, o := range s.members[c.ID] {
+		if o.Admin || o.UserID == c.CreatedBy || o.JoinedAt < m.JoinedAt || (o.JoinedAt == m.JoinedAt && o.UserID < uid) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) GroupAdmin(conv, uid int64) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c := s.convs[conv]
+	return c != nil && s.groupAdminL(c, uid)
+}
+
+// CanPost says whether uid may send messages to conv (a group may be admins-only).
+func (s *Store) CanPost(conv, uid int64) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c := s.convs[conv]
+	return c != nil && (!c.OnlyAdmins || s.groupAdminL(c, uid))
+}
+
+// UpdateGroup changes a group's name, photo or settings.
+func (s *Store) UpdateGroup(conv int64, fn func(c *ConvRec)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.convs[conv]
+	if c == nil || c.Type != "group" {
+		return errNotFound
+	}
+	fn(c)
+	s.putConv(c)
+	return nil
+}
+
+// AddMembers puts active users into a group and returns who was added.
+func (s *Store) AddMembers(conv int64, ids []int64) []int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.convs[conv]
+	if c == nil || c.Type != "group" {
+		return nil
+	}
+	var added []int64
+	now := nowMs()
+	for _, uid := range ids {
+		if u := s.users[uid]; u == nil || u.Status != "active" || s.members[conv][uid] != nil {
+			continue
+		}
+		s.addMemberNowL(conv, uid, now)
+		added = append(added, uid)
+	}
+	return added
+}
+
+// SetGroupAdmin makes a member an admin or not (the creator always is).
+func (s *Store) SetGroupAdmin(conv, uid int64, admin bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.convs[conv]
+	m := s.members[conv][uid]
+	if c == nil || c.Type != "group" || m == nil {
+		return errNotFound
+	}
+	if uid == c.CreatedBy && !admin {
+		return errors.New("the group's creator is always an admin")
+	}
+	m.Admin = admin
+	s.putMember(m)
+	return nil
 }
 
 func (s *Store) IsMember(conv, uid int64) bool {
@@ -1207,9 +1301,15 @@ func (s *Store) Conversation(conv, viewer int64) (*Conversation, error) {
 	}
 	sort.Slice(members, func(i, j int) bool { return members[i].JoinedAt < members[j].JoinedAt })
 	var myRead, cleared int64
+	if c.Type == "group" {
+		v.OwnerID, v.OnlyAdmins = c.CreatedBy, c.OnlyAdmins
+	}
 	for _, m := range members {
 		if u := s.users[m.UserID]; u != nil {
 			v.Members = append(v.Members, s.viewUserL(u, viewer))
+		}
+		if c.Type == "group" && s.groupAdminL(c, m.UserID) {
+			v.Admins = append(v.Admins, m.UserID)
 		}
 		v.Reads[strconv.FormatInt(m.UserID, 10)] = m.LastReadID
 		if m.UserID == viewer {
