@@ -141,7 +141,8 @@ def library_files(g, art, v):
 # ---------- manifest ----------
 
 def base_manifest(cfg, version_code):
-    perms = {p.upper() for p in cfg.get('permissions', [])} | {'INTERNET', 'POST_NOTIFICATIONS', 'USE_FULL_SCREEN_INTENT'}
+    perms = {p.upper() for p in cfg.get('permissions', [])} | {
+        'INTERNET', 'POST_NOTIFICATIONS', 'USE_FULL_SCREEN_INTENT', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_MEDIA_PLAYBACK'}
     orientation = {'portrait': 'portrait', 'landscape': 'landscape'}.get(cfg.get('orientation'), 'unspecified')
     webview, splash = cfg.get('webview', {}), cfg.get('splashScreen', {})
     meta = {
@@ -171,6 +172,8 @@ def base_manifest(cfg, version_code):
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <service android:name="com.nicron.webview.VoicePlayerService" android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="messages" />
     </application>
 </manifest>

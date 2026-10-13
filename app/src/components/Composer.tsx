@@ -5,6 +5,7 @@ import { socket } from '../lib/socket';
 import type { Message } from '../lib/types';
 import { editMessage, previewOf, sendMessage } from '../store/chat';
 import { useConfig } from '../store/config';
+import { pauseVoice } from '../store/player';
 import { toast } from '../store/toast';
 import EmojiPicker from './EmojiPicker';
 
@@ -17,6 +18,31 @@ function recorderType(): string | undefined {
   );
 }
 
+/**
+ * Waits until the microphone sends real sound: phones often start with a
+ * moment of digital silence, which would otherwise open every voice message.
+ * Gives up after `max` ms.
+ */
+async function micLive(stream: MediaStream, max = 1500) {
+  let ctx: AudioContext | null = null;
+  try {
+    ctx = new AudioContext();
+    void ctx.resume();
+    const analyser = ctx.createAnalyser();
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+    for (const end = Date.now() + max; Date.now() < end; ) {
+      analyser.getFloatTimeDomainData(samples);
+      if (samples.some((v) => v !== 0)) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  } catch {
+    /* no Web Audio: start right away */
+  } finally {
+    void ctx?.close().catch(() => {});
+  }
+}
+
 function extFor(type: string) {
   if (type.includes('mp4')) return 'm4a';
   if (type.includes('ogg')) return 'ogg';
@@ -27,7 +53,7 @@ interface Recording {
   recorder: MediaRecorder;
   stream: MediaStream;
   chunks: Blob[];
-  startedAt: number;
+  startedAt: number; // 0 while the mic is starting
 }
 
 interface Props {
@@ -61,7 +87,13 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
   // Stop the mic if the screen goes away mid-recording.
   const live = useRef<Recording | null>(null);
   live.current = recording;
-  useEffect(() => () => live.current?.stream.getTracks().forEach((t) => t.stop()), []);
+  useEffect(
+    () => () => {
+      live.current?.stream.getTracks().forEach((t) => t.stop());
+      live.current = null;
+    },
+    [],
+  );
 
   // Entering edit mode puts the message text in the box.
   useEffect(() => {
@@ -81,6 +113,20 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 140) + 'px';
   }, [text]);
+
+  // Picking emoji keeps the panel open for more. They go in at the cursor; on
+  // phones the box isn't focused, which would bring up the keyboard and close the panel.
+  function insertEmoji(e: string) {
+    const el = input.current;
+    const at = el ? el.selectionStart : text.length;
+    const end = el ? el.selectionEnd : text.length;
+    setText(text.slice(0, at) + e + text.slice(end));
+    requestAnimationFrame(() => {
+      if (!el) return;
+      if (!coarsePointer) el.focus();
+      el.setSelectionRange(at + e.length, at + e.length);
+    });
+  }
 
   function onChange(v: string) {
     setText(v);
@@ -144,24 +190,52 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
       toast('Voice messages need a secure (https) connection');
       return;
     }
+    pauseVoice();
+    let rec: Recording;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      // No echo cancelling: nothing plays while recording, and on Android it
+      // puts the phone in call mode, which takes a second or two to switch
+      // and swallows the start of the message.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true },
+      });
       const type = recorderType();
       const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-      const rec: Recording = { recorder, stream, chunks: [], startedAt: Date.now() };
+      rec = { recorder, stream, chunks: [], startedAt: 0 };
       recorder.ondataavailable = (e) => e.data.size && rec.chunks.push(e.data);
-      recorder.start(250);
-      setEmoji(false);
-      setRecording(rec);
     } catch {
       toast('Allow microphone access to record voice messages');
+      return;
     }
+    setEmoji(false);
+    setRecording(rec);
+    live.current = rec;
+    // Recording starts (and the timer runs) once the mic really hears something.
+    await micLive(rec.stream);
+    if (live.current !== rec) return; // discarded, or the chat closed, meanwhile
+    try {
+      rec.recorder.start(250);
+    } catch {
+      rec.stream.getTracks().forEach((t) => t.stop());
+      setRecording(null);
+      toast("Couldn't start recording");
+      return;
+    }
+    const started = { ...rec, startedAt: Date.now() };
+    live.current = started;
+    setRecording(started);
   }
 
   function stopRecording(send: boolean) {
     const rec = recording;
     if (!rec) return;
     setRecording(null);
+    live.current = null;
+    if (!rec.startedAt) {
+      // The mic was still starting: nothing recorded yet.
+      rec.stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
     const duration = Date.now() - rec.startedAt;
     rec.recorder.onstop = () => {
       rec.stream.getTracks().forEach((t) => t.stop());
@@ -201,12 +275,7 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
   return (
     <div className="composer-wrap">
       {emoji && !recording && (
-        <EmojiPicker
-          onPick={(e) => {
-            setText((t) => t + e);
-            input.current?.focus();
-          }}
-        />
+        <EmojiPicker onPick={insertEmoji} />
       )}
       {(replyTo || editing) && !recording && (
         <div className="composer-context">
@@ -235,9 +304,9 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
             <button className="icon-btn" onClick={() => stopRecording(false)} aria-label="Discard recording">
               <Trash2 size={20} />
             </button>
-            <span className="rec-dot" />
-            <span className="rec-time">{formatDuration(Date.now() - recording.startedAt)}</span>
-            <span className="rec-hint">Recording…</span>
+            <span className={`rec-dot ${recording.startedAt ? '' : 'waiting'}`} />
+            <span className="rec-time">{formatDuration(recording.startedAt ? Date.now() - recording.startedAt : 0)}</span>
+            <span className="rec-hint">{recording.startedAt ? 'Recording…' : 'Starting the mic…'}</span>
           </div>
         ) : (
           <div className="composer-pill">

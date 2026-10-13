@@ -5,6 +5,7 @@ import Avatar from '../components/Avatar';
 import Composer from '../components/Composer';
 import MessageBubble from '../components/MessageBubble';
 import MessageMenu from '../components/MessageMenu';
+import PlayerBar from '../components/PlayerBar';
 import Scenery from '../components/Scenery';
 import { AttachSheet, ForwardSheet, type Pick } from '../components/Sheets';
 import { api, errorText } from '../lib/api';
@@ -12,6 +13,7 @@ import { formatDay, formatLastSeen, sameDay } from '../lib/format';
 import { fileNameFor, shrinkImage } from '../lib/media';
 import { goBack, navigate } from '../lib/router';
 import type { Conversation, Message, User } from '../lib/types';
+import { appVisible, onAppVisibility } from '../lib/visibility';
 import { useAuth } from '../store/auth';
 import {
   deleteMessage,
@@ -27,6 +29,7 @@ import {
   reactTo,
   removeConversation,
   retryMessage,
+  saveMessage,
   sendMessage,
   setBlocked,
   setMuted,
@@ -43,6 +46,7 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
   const presence = useChat((s) => s.presence);
   const f = useConfig((s) => s.features);
   const peer = conv.type === 'direct' ? peerOf(conv, me) : null;
+  const saved = conv.type === 'saved';
   const title = titleOf(conv, me);
   const call = (kind: 'audio' | 'video') => {
     onClose();
@@ -50,7 +54,11 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
   };
 
   async function clearChat() {
-    const what = peer ? `Delete this chat with ${title}? Messages are removed for you only.` : 'Clear the history of this group for you?';
+    const what = peer
+      ? `Delete this chat with ${title}? Messages are removed for you only.`
+      : saved
+        ? 'Delete everything in Saved Messages?'
+        : 'Clear the history of this group for you?';
     if (!window.confirm(what)) return;
     try {
       await api.clearHistory(conv.id);
@@ -91,7 +99,7 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="sheet-hero">
-          <Avatar name={title} src={peer ? peer.avatar : conv.avatar} group={!peer} size={96} storyOf={peer?.id} />
+          <Avatar name={title} src={peer ? peer.avatar : conv.avatar} group={!peer && !saved} saved={saved} size={96} storyOf={peer?.id} />
           <h2 dir="auto">{title}</h2>
           {peer ? (
             <>
@@ -120,16 +128,20 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
                 </div>
               )}
             </>
+          ) : saved ? (
+            <p className="muted">Notes and messages you save. Only you can see them.</p>
           ) : (
             <p className="muted">{conv.members.length} members</p>
           )}
         </div>
 
         <div className="sheet-menu">
-          <button className="menu-item" onClick={() => void setMuted(conv.id, !conv.muted)}>
-            {conv.muted ? <Bell size={19} /> : <BellOff size={19} />}
-            {conv.muted ? 'Unmute notifications' : 'Mute notifications'}
-          </button>
+          {!saved && (
+            <button className="menu-item" onClick={() => void setMuted(conv.id, !conv.muted)}>
+              {conv.muted ? <Bell size={19} /> : <BellOff size={19} />}
+              {conv.muted ? 'Unmute notifications' : 'Mute notifications'}
+            </button>
+          )}
           {peer && (
             <button className="menu-item danger" onClick={toggleBlock}>
               <Ban size={19} />
@@ -140,7 +152,7 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
             <Trash2 size={19} />
             {peer ? 'Delete chat' : 'Clear history'}
           </button>
-          {!peer && (
+          {conv.type === 'group' && (
             <button className="menu-item danger" onClick={leave}>
               <LogOut size={19} />
               Leave group
@@ -148,7 +160,7 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
           )}
         </div>
 
-        {!peer && (
+        {conv.type === 'group' && (
           <div className="sheet-list">
             <h3 className="section-title">Members</h3>
             {conv.members.map((m) => (
@@ -175,6 +187,7 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
 type Presence = Record<number, { online: boolean; lastSeen: number }>;
 
 function statusLine(conv: Conversation, me: number, peer: User | null, presence: Presence, typers: { name: string; kind: string }[]) {
+  if (conv.type === 'saved') return 'Only you';
   if (typers.length) {
     const what = typers[0].kind === 'recording' ? 'recording a voice message…' : 'typing…';
     return conv.type === 'group' ? `${typers[0].name} is ${what}` : what;
@@ -218,10 +231,9 @@ export default function ChatScreen({ id }: { id: number }) {
     useChat.setState({ activeId: id });
     ensureConversation(id).then((c) => !c && setMissing(true));
     loadMessages(id).catch((e) => toast(errorText(e)));
-    const onVisible = () => document.visibilityState === 'visible' && atBottom.current && markRead(id);
-    document.addEventListener('visibilitychange', onVisible);
+    const offVisibility = onAppVisibility(() => appVisible() && atBottom.current && markRead(id));
     return () => {
-      document.removeEventListener('visibilitychange', onVisible);
+      offVisibility();
       if (useChat.getState().activeId === id) useChat.setState({ activeId: null });
     };
   }, [id]);
@@ -229,8 +241,8 @@ export default function ChatScreen({ id }: { id: number }) {
   const lastId = conv?.lastMessage?.id ?? 0;
   useEffect(() => {
     if (!lastId) return;
-    if (atBottom.current) markRead(id);
-    else setNewBelow((n) => n + 1);
+    if (!atBottom.current) setNewBelow((n) => n + 1);
+    else if (appVisible()) markRead(id); // otherwise once the app is back in front
   }, [id, lastId]);
 
   // Stick to the bottom when new content arrives, keep position when older pages load.
@@ -370,6 +382,7 @@ export default function ChatScreen({ id }: { id: number }) {
   // A message counts as read once every other member has read it.
   const readUpTo = useMemo(() => {
     if (!conv) return 0;
+    if (conv.type === 'saved') return Number.MAX_SAFE_INTEGER; // nobody else to read them
     const others = Object.entries(conv.reads).filter(([uid]) => Number(uid) !== me).map(([, v]) => v);
     return others.length ? Math.min(...others) : 0;
   }, [conv, me]);
@@ -414,7 +427,14 @@ export default function ChatScreen({ id }: { id: number }) {
         </button>
         {conv && (
           <button className="chat-who" onClick={() => setInfo(true)}>
-            <Avatar name={title} src={peer ? peer.avatar : conv.avatar} group={!peer} size={42} storyOf={peer?.id} />
+            <Avatar
+              name={title}
+              src={peer ? peer.avatar : conv.avatar}
+              group={conv.type === 'group'}
+              saved={conv.type === 'saved'}
+              size={42}
+              storyOf={peer?.id}
+            />
             <span className="chat-who-text">
               <span className="chat-who-name" dir="auto">
                 {title}
@@ -438,6 +458,7 @@ export default function ChatScreen({ id }: { id: number }) {
           <EllipsisVertical size={21} />
         </button>
       </header>
+      <PlayerBar />
 
       {pinned && (
         <div className="pinned-bar" onClick={() => jumpTo(pinned.id)}>
@@ -468,6 +489,11 @@ export default function ChatScreen({ id }: { id: number }) {
               <span />
               <span />
               <span />
+            </div>
+          ) : messages.length === 0 && conv?.type === 'saved' ? (
+            <div className="say-hi">
+              <span className="say-hi-emoji">🔖</span>
+              <p>Keep notes here, or tap Save on any message to keep a copy. Only you can see them.</p>
             </div>
           ) : messages.length === 0 ? (
             <div className="say-hi">
@@ -578,6 +604,7 @@ export default function ChatScreen({ id }: { id: number }) {
           anchor={menu.rect}
           mine={menu.msg.senderId === me}
           isAdmin={isAdmin}
+          saved={conv?.type === 'saved'}
           pinned={pinned?.id === menu.msg.id}
           onClose={() => setMenu(null)}
           onReply={() => onReply(menu.msg)}
@@ -587,6 +614,7 @@ export default function ChatScreen({ id }: { id: number }) {
           }}
           onPin={() => void pinMessage(id, pinned?.id === menu.msg.id ? null : menu.msg)}
           onForward={() => setForwarding(menu.msg)}
+          onSave={() => void saveMessage(menu.msg)}
           onDelete={(forAll) => void deleteMessage(menu.msg, forAll)}
           onReact={(e) => void reactTo(menu.msg, e)}
           onRetry={() => onRetry(menu.msg)}

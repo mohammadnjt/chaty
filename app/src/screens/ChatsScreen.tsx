@@ -1,7 +1,8 @@
-import { Bell, BellOff, CheckCheck, Check, CirclePlus, MessageSquare, Search, X } from 'lucide-react';
+import { Bell, BellOff, Bookmark, CheckCheck, Check, CirclePlus, MessageSquare, Search, X } from 'lucide-react';
 import { memo, useMemo, useRef, useState } from 'react';
 import Avatar from '../components/Avatar';
 import Logo from '../components/Logo';
+import PlayerBar from '../components/PlayerBar';
 import Scenery from '../components/Scenery';
 import TabBar from '../components/TabBar';
 import { api, errorText } from '../lib/api';
@@ -10,21 +11,24 @@ import { formatListTime } from '../lib/format';
 import { enablePush, pushAvailable, pushPermission } from '../lib/push';
 import { navigate } from '../lib/router';
 import type { Conversation, User } from '../lib/types';
-import { activityOf, addConversation, peerOf, previewOf, titleOf, useChat } from '../store/chat';
+import { activityOf, addConversation, openSaved, peerOf, previewOf, titleOf, useChat } from '../store/chat';
 import { toast } from '../store/toast';
 import { UserRow, useUserSearch } from './NewChatScreen';
 
 export function HeroHeader({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
-    <header className="hero">
-      <Scenery variant="header" className="hero-bg" />
-      <div className="hero-row">
-        <Logo size={34} />
-        <h1>{title}</h1>
-        <div className="spacer" />
-        {children}
-      </div>
-    </header>
+    <>
+      <header className="hero">
+        <Scenery variant="header" className="hero-bg" />
+        <div className="hero-row">
+          <Logo size={34} />
+          <h1>{title}</h1>
+          <div className="spacer" />
+          {children}
+        </div>
+      </header>
+      <PlayerBar />
+    </>
   );
 }
 
@@ -50,7 +54,14 @@ const ChatRow = memo(function ChatRow({
 
   return (
     <button className="chat-row" onClick={() => navigate(`/chat/${c.id}`)}>
-      <Avatar name={title} src={peer ? peer.avatar : c.avatar} group={c.type === 'group'} online={online} storyOf={peer?.id} />
+      <Avatar
+        name={title}
+        src={peer ? peer.avatar : c.avatar}
+        group={c.type === 'group'}
+        saved={c.type === 'saved'}
+        online={online}
+        storyOf={peer?.id}
+      />
       <div className="chat-row-body">
         <div className="chat-row-top">
           <span className="chat-name" dir="auto">
@@ -65,7 +76,7 @@ const ChatRow = memo(function ChatRow({
               <span className="typing-text">typing…</span>
             ) : (
               <>
-                {mine && last?.id ? (
+                {mine && last?.id && c.type !== 'saved' ? (
                   read ? (
                     <CheckCheck size={15} className="tick-read" />
                   ) : (
@@ -158,9 +169,20 @@ export default function ChatsScreen() {
     }
   }
 
+  async function showSaved() {
+    try {
+      navigate(`/chat/${(await openSaved()).id}`);
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
+
   return (
     <div className="screen tab-screen">
       <HeroHeader title="Chats">
+        <button className="icon-btn hero-btn" onClick={() => void showSaved()} aria-label="Saved Messages">
+          <Bookmark size={21} />
+        </button>
         <button className="icon-btn hero-btn" onClick={() => searchRef.current?.focus()} aria-label="Search">
           <Search size={22} />
         </button>

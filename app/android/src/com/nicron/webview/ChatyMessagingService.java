@@ -16,7 +16,8 @@ import java.util.Map;
 /**
  * Push notifications from Chaty's server (Firebase data messages): new
  * messages, a ringing call (with the ringtone, and over the lock screen), and
- * "missed call" when it stops ringing. Tapping one opens the chat.
+ * "missed call" when it stops ringing. Tapping one opens the chat. A chat's
+ * notification goes away once it's read, here or on another device ("clear").
  */
 public class ChatyMessagingService extends FirebaseMessagingService {
     static final String EXTRA_URL = "chaty.url";
@@ -36,6 +37,10 @@ public class ChatyMessagingService extends FirebaseMessagingService {
         String type = d.get("type");
         String tag = d.containsKey("tag") ? d.get("tag") : "chaty";
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if ("clear".equals(type)) {
+            nm.cancel(tag, ID);
+            return;
+        }
         if ("call-end".equals(type)) {
             // The call stopped ringing; it becomes "missed call" unless answered or declined.
             nm.cancel(tag, ID);
@@ -70,6 +75,11 @@ public class ChatyMessagingService extends FirebaseMessagingService {
             b.setCategory(Notification.CATEGORY_MESSAGE).setPriority(Notification.PRIORITY_HIGH);
         }
         nm.notify(tag, ID, b.build());
+    }
+
+    /** Takes down the notification with this tag (e.g. "chat-12" once that chat is read). */
+    static void cancel(Context context, String tag) {
+        ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE)).cancel(tag, ID);
     }
 
     private int smallIcon() {

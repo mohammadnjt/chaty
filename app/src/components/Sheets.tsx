@@ -46,12 +46,14 @@ export function ForwardSheet({
             const title = titleOf(c, me);
             return (
               <button key={c.id} className="user-row" onClick={() => onPick(c)}>
-                <Avatar name={title} src={peer ? peer.avatar : c.avatar} group={!peer} size={44} />
+                <Avatar name={title} src={peer ? peer.avatar : c.avatar} group={c.type === 'group'} saved={c.type === 'saved'} size={44} />
                 <div className="user-row-body">
                   <span className="user-name" dir="auto">
                     {title}
                   </span>
-                  <span className="user-sub">{c.type === 'group' ? `${c.members.length} members` : 'Direct chat'}</span>
+                  <span className="user-sub">
+                    {c.type === 'group' ? `${c.members.length} members` : c.type === 'saved' ? 'Only you' : 'Direct chat'}
+                  </span>
                 </div>
               </button>
             );

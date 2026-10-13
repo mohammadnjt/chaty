@@ -1,4 +1,4 @@
-import { Copy, Forward, Pencil, Pin, PinOff, Reply, RotateCw, Trash2 } from 'lucide-react';
+import { Bookmark, Copy, Forward, Pencil, Pin, PinOff, Reply, RotateCw, Trash2 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { copyText } from '../lib/format';
 import type { Message } from '../lib/types';
@@ -12,12 +12,14 @@ interface Props {
   anchor: DOMRect;
   mine: boolean;
   isAdmin: boolean;
+  saved: boolean; // in Saved Messages
   pinned: boolean;
   onClose: () => void;
   onReply: () => void;
   onEdit: () => void;
   onPin: () => void;
   onForward: () => void;
+  onSave: () => void;
   onDelete: (forAll: boolean) => void;
   onReact: (emoji: string) => void;
   onRetry: () => void;
@@ -29,7 +31,7 @@ export default function MessageMenu(p: Props) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { msg } = p;
-  const deleted = msg.type === 'deleted';
+  const deleted = !!msg.deletedAt; // an admin looking at a message deleted for everyone
   const sent = msg.id > 0;
   const text = msg.body;
 
@@ -67,7 +69,7 @@ export default function MessageMenu(p: Props) {
             <button className="menu-item danger" onClick={act(() => p.onDelete(false))}>
               <Trash2 size={18} /> Delete for me
             </button>
-            {(p.mine || p.isAdmin) && sent && !deleted && (
+            {(p.mine || p.isAdmin) && sent && !deleted && !p.saved && (
               <button className="menu-item danger" onClick={act(() => p.onDelete(true))}>
                 <Trash2 size={18} /> Delete for everyone
               </button>
@@ -97,7 +99,7 @@ export default function MessageMenu(p: Props) {
                 <Reply size={18} /> Reply
               </button>
             )}
-            {text && !deleted && (
+            {text && (
               <button
                 className="menu-item"
                 onClick={act(async () => toast((await copyText(text)) ? 'Copied' : "Couldn't copy"))}
@@ -118,6 +120,11 @@ export default function MessageMenu(p: Props) {
             {f.forwarding && sent && !deleted && (
               <button className="menu-item" onClick={act(p.onForward)}>
                 <Forward size={18} /> Forward
+              </button>
+            )}
+            {sent && !deleted && !p.saved && (
+              <button className="menu-item" onClick={act(p.onSave)}>
+                <Bookmark size={18} /> Save
               </button>
             )}
             {(f.deleteMessages || !sent) && (

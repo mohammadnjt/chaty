@@ -58,7 +58,7 @@ type SessionRec struct {
 
 type ConvRec struct {
 	ID        int64  `json:"id"`
-	Type      string `json:"type"` // direct | group
+	Type      string `json:"type"` // direct | group | saved (Saved Messages: a chat with only its owner)
 	Title     string `json:"title"`
 	Avatar    string `json:"avatar"`
 	DirectKey string `json:"directKey,omitempty"`
@@ -80,7 +80,7 @@ type MsgRec struct {
 	ID            int64              `json:"id"`
 	ConvID        int64              `json:"convId"`
 	SenderID      int64              `json:"senderId"`
-	Type          string             `json:"type"` // text | image | audio | video | file | deleted
+	Type          string             `json:"type"` // text | image | audio | video | file | deleted (older servers' deletions)
 	Body          string             `json:"body"`
 	MediaURL      string             `json:"mediaUrl,omitempty"`
 	FileName      string             `json:"fileName,omitempty"`
@@ -91,9 +91,13 @@ type MsgRec struct {
 	ForwardedFrom string             `json:"forwardedFrom,omitempty"`
 	Reactions     map[string][]int64 `json:"reactions,omitempty"`
 	HiddenFor     []int64            `json:"hiddenFor,omitempty"`
+	DeletedAt     int64              `json:"deletedAt,omitempty"` // deleted for everyone: gone, except that admins still see it, marked
 	EditedAt      int64              `json:"editedAt,omitempty"`
 	CreatedAt     int64              `json:"createdAt"`
 }
+
+// gone reports whether m was deleted for everyone.
+func (m *MsgRec) gone() bool { return m.DeletedAt != 0 || m.Type == "deleted" }
 
 type CallRec struct {
 	ID         string `json:"id"`
@@ -149,6 +153,7 @@ type Message struct {
 	Reply          *ReplyPreview      `json:"reply,omitempty"`
 	ForwardedFrom  string             `json:"forwardedFrom,omitempty"`
 	Reactions      map[string][]int64 `json:"reactions,omitempty"`
+	DeletedAt      int64              `json:"deletedAt,omitempty"` // only admins get deleted messages
 	EditedAt       int64              `json:"editedAt,omitempty"`
 	CreatedAt      int64              `json:"createdAt"`
 }
@@ -1080,6 +1085,26 @@ func (s *Store) DirectConversation(a, b int64) (int64, error) {
 	return c.ID, nil
 }
 
+// SavedConversation is the user's Saved Messages, created on first use.
+func (s *Store) SavedConversation(uid int64) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := "saved:" + strconv.FormatInt(uid, 10)
+	if id, ok := s.direct[key]; ok {
+		return id, nil
+	}
+	if s.users[uid] == nil {
+		return 0, errNotFound
+	}
+	now := nowMs()
+	s.nextConv++
+	c := &ConvRec{ID: s.nextConv, Type: "saved", DirectKey: key, CreatedBy: uid, CreatedAt: now}
+	s.addConvL(c)
+	s.putConv(c)
+	s.addMemberNowL(c.ID, uid, now)
+	return c.ID, nil
+}
+
 func (s *Store) CreateGroup(title string, creator int64, memberIDs []int64) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1149,13 +1174,22 @@ func (s *Store) ConversationIDs(uid int64) []int64 {
 		if mem == nil {
 			continue
 		}
-		list := s.msgs[cid]
-		cleared := mem.ClearedID
-		if c.Type == "group" || (len(list) > 0 && list[len(list)-1].ID > cleared) {
+		if c.Type == "group" || s.hasVisibleL(cid, uid, mem.ClearedID) {
 			out = append(out, cid)
 		}
 	}
 	return out
+}
+
+// hasVisibleL reports whether viewer has a message in conv after cleared.
+func (s *Store) hasVisibleL(conv, viewer, cleared int64) bool {
+	list := s.msgs[conv]
+	for i := len(list) - 1; i >= 0 && list[i].ID > cleared; i-- {
+		if s.visibleL(list[i], viewer) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) Conversation(conv, viewer int64) (*Conversation, error) {
@@ -1190,7 +1224,7 @@ func (s *Store) Conversation(conv, viewer int64) (*Conversation, error) {
 		if m.ID <= cleared {
 			break
 		}
-		if containsID(m.HiddenFor, viewer) {
+		if !s.visibleL(m, viewer) {
 			continue
 		}
 		if v.LastMessage == nil {
@@ -1200,11 +1234,11 @@ func (s *Store) Conversation(conv, viewer int64) (*Conversation, error) {
 		if m.ID <= myRead {
 			break
 		}
-		if m.SenderID != viewer && m.Type != "deleted" {
+		if m.SenderID != viewer {
 			v.Unread++
 		}
 	}
-	if p := s.msgByID[c.PinnedID]; p != nil && p.Type != "deleted" && p.ID > cleared {
+	if p := s.msgByID[c.PinnedID]; p != nil && !p.gone() && p.ID > cleared {
 		view := s.viewL(p)
 		v.Pinned = &view
 	}
@@ -1219,7 +1253,7 @@ func (s *Store) SetPinned(conv, msgID int64) error {
 		return errNotFound
 	}
 	if msgID != 0 {
-		if m := s.msgByID[msgID]; m == nil || m.ConvID != conv || m.Type == "deleted" {
+		if m := s.msgByID[msgID]; m == nil || m.ConvID != conv || m.gone() {
 			return errNotFound
 		}
 	}
@@ -1251,11 +1285,33 @@ func snippet(m *MsgRec) string {
 	return string(r)
 }
 
+// visibleL says whether viewer sees m: not deleted for them, and if it was
+// deleted for everyone, only admins still do.
+func (s *Store) visibleL(m *MsgRec, viewer int64) bool {
+	return visibleTo(m, viewer, s.isAdminL(viewer))
+}
+
+func visibleTo(m *MsgRec, viewer int64, admin bool) bool {
+	if containsID(m.HiddenFor, viewer) || m.Type == "deleted" {
+		return false
+	}
+	return m.DeletedAt == 0 || admin
+}
+
+// Visible says whether viewer sees message id.
+func (s *Store) Visible(id, viewer int64) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	m := s.msgByID[id]
+	return m != nil && s.visibleL(m, viewer)
+}
+
 func (s *Store) viewL(m *MsgRec) Message {
 	v := Message{
 		ID: m.ID, ConversationID: m.ConvID, SenderID: m.SenderID, Type: m.Type, Body: m.Body,
 		MediaURL: m.MediaURL, FileName: m.FileName, FileSize: m.FileSize, Duration: m.Duration,
-		ClientID: m.ClientID, ForwardedFrom: m.ForwardedFrom, EditedAt: m.EditedAt, CreatedAt: m.CreatedAt,
+		ClientID: m.ClientID, ForwardedFrom: m.ForwardedFrom, DeletedAt: m.DeletedAt, EditedAt: m.EditedAt,
+		CreatedAt: m.CreatedAt,
 	}
 	if len(m.Reactions) > 0 {
 		v.Reactions = m.Reactions
@@ -1263,6 +1319,9 @@ func (s *Store) viewL(m *MsgRec) Message {
 	if m.ReplyTo != 0 {
 		if r := s.msgByID[m.ReplyTo]; r != nil {
 			v.Reply = &ReplyPreview{ID: r.ID, SenderID: r.SenderID, Type: r.Type, Body: snippet(r)}
+			if r.gone() {
+				v.Reply.Type, v.Reply.Body = "deleted", ""
+			}
 		}
 	}
 	return v
@@ -1327,7 +1386,7 @@ func (s *Store) Messages(conv, viewer, before int64, limit int) []Message {
 		if m.ID <= cleared {
 			break
 		}
-		if (before > 0 && m.ID >= before) || containsID(m.HiddenFor, viewer) {
+		if (before > 0 && m.ID >= before) || !s.visibleL(m, viewer) {
 			continue
 		}
 		out = append(out, s.viewL(m))

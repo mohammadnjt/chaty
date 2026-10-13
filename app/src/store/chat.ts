@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { api, errorText, PAGE_SIZE, type SendPayload } from '../lib/api';
 import { uid } from '../lib/format';
 import { notify } from '../lib/native';
+import { clearChatNotification } from '../lib/push';
 import { playMessage } from '../lib/sounds';
+import { appVisible } from '../lib/visibility';
 import type { Conversation, Message, MessageType, User } from '../lib/types';
 import { toast } from './toast';
 
@@ -45,6 +47,7 @@ export const peerOf = (c: Conversation, me: number) => c.members.find((m) => m.i
 
 export function titleOf(c: Conversation, me: number): string {
   if (c.type === 'group') return c.title;
+  if (c.type === 'saved') return 'Saved Messages';
   return peerOf(c, me)?.name ?? 'Chat';
 }
 
@@ -78,7 +81,7 @@ function presenceFrom(users: User[], into: Record<number, Presence>) {
   return out;
 }
 
-const isViewing = (convId: number) => get().activeId === convId && document.visibilityState === 'visible';
+const isViewing = (convId: number) => get().activeId === convId && appVisible();
 
 function upsert(list: Message[], msg: Message): Message[] {
   const i = list.findIndex((m) => (msg.id && m.id === msg.id) || (msg.clientId && m.clientId === msg.clientId));
@@ -202,8 +205,9 @@ export function receiveMessage(msg: Message) {
   }
 }
 
-/** An edited / deleted / reacted message. */
+/** An edited / reacted message, or (for admins) one deleted for everyone. */
 export function updateMessage(msg: Message) {
+  const quote = msg.deletedAt ? { type: 'deleted' as const, body: '' } : { type: msg.type, body: msg.body };
   set((s) => {
     const conv = s.conversations[msg.conversationId];
     const list = s.messages[msg.conversationId];
@@ -211,7 +215,7 @@ export function updateMessage(msg: Message) {
     if (list) {
       patch.messages = {
         ...s.messages,
-        [msg.conversationId]: list.map((m) => (m.id === msg.id ? { ...msg, localUrl: m.localUrl } : m.reply?.id === msg.id ? { ...m, reply: { ...m.reply, type: msg.type, body: msg.body } } : m)),
+        [msg.conversationId]: list.map((m) => (m.id === msg.id ? { ...msg, localUrl: m.localUrl } : m.reply?.id === msg.id ? { ...m, reply: { ...m.reply, ...quote } } : m)),
       };
     }
     if (conv) {
@@ -220,7 +224,7 @@ export function updateMessage(msg: Message) {
         [conv.id]: {
           ...conv,
           lastMessage: conv.lastMessage?.id === msg.id ? msg : conv.lastMessage,
-          pinned: conv.pinned?.id === msg.id ? (msg.type === 'deleted' ? null : msg) : conv.pinned,
+          pinned: conv.pinned?.id === msg.id ? (msg.deletedAt ? null : msg) : conv.pinned,
         },
       };
     }
@@ -228,10 +232,20 @@ export function updateMessage(msg: Message) {
   });
 }
 
-export function hideMessage(d: { conversationId: number; id: number }) {
+/** A message gone from this chat: deleted for me, or (deleted) for everyone. */
+export function hideMessage(d: { conversationId: number; id: number; deleted?: boolean }) {
   set((s) => {
     const list = s.messages[d.conversationId];
-    return list ? { messages: { ...s.messages, [d.conversationId]: list.filter((m) => m.id !== d.id) } } : {};
+    if (!list) return {};
+    const kept = list.filter((m) => m.id !== d.id);
+    return {
+      messages: {
+        ...s.messages,
+        [d.conversationId]: d.deleted
+          ? kept.map((m) => (m.reply?.id === d.id ? { ...m, reply: { ...m.reply, type: 'deleted', body: '' } } : m))
+          : kept,
+      },
+    };
   });
   if (get().conversations[d.conversationId]?.lastMessage?.id === d.id) void ensureConversation(d.conversationId, true);
 }
@@ -244,7 +258,7 @@ function announce(c: Conversation, msg: Message) {
   if (c.muted) return;
   const sender = c.members.find((m) => m.id === msg.senderId);
   const title = c.type === 'group' ? `${sender?.name ?? 'Someone'} · ${c.title}` : (sender?.name ?? 'New message');
-  if (document.visibilityState === 'visible') playMessage();
+  if (appVisible()) playMessage();
   notify(title, previewOf(msg));
 }
 
@@ -258,7 +272,9 @@ export function applyRead(d: { conversationId: number; userId: number; messageId
   patchConversation(conv.id, { reads, unread });
 }
 
+/** The chat is on screen: its messages are seen and its notification can go. */
 export function markRead(convId: number) {
+  clearChatNotification(convId);
   const s = get();
   const conv = s.conversations[convId];
   const last = conv?.lastMessage;
@@ -431,8 +447,7 @@ export async function deleteMessage(msg: Message, forAll: boolean) {
   }
   try {
     await api.deleteMessage(msg.id, forAll);
-    if (forAll) updateMessage({ ...msg, type: 'deleted', body: '', mediaUrl: '', fileName: '', reactions: undefined });
-    else hideMessage({ conversationId: msg.conversationId, id: msg.id });
+    hideMessage({ conversationId: msg.conversationId, id: msg.id, deleted: forAll });
   } catch (e) {
     toast(errorText(e));
   }
@@ -461,6 +476,23 @@ export async function forwardMessage(msg: Message, conversationIds: number[]) {
   const sent = await api.forward(msg.id, conversationIds);
   sent.forEach(receiveMessage);
   return sent;
+}
+
+/** Your Saved Messages chat (made on first use). */
+export async function openSaved(): Promise<Conversation> {
+  const c = await api.savedMessages();
+  putConversation(c);
+  return c;
+}
+
+/** Keeps a copy of the message in Saved Messages. */
+export async function saveMessage(msg: Message) {
+  try {
+    receiveMessage(await api.save(msg.id));
+    toast('Saved to Saved Messages');
+  } catch (e) {
+    toast(errorText(e));
+  }
 }
 
 /** Drop a chat from this device (history cleared, group left). */

@@ -38,6 +38,7 @@ export interface Message {
   reply?: ReplyPreview;
   forwardedFrom?: string;
   reactions?: Record<string, number[]>;
+  deletedAt?: number; // deleted for everyone: only admins still get it
   editedAt?: number;
   createdAt: number;
   // client-only
@@ -48,7 +49,7 @@ export interface Message {
 
 export interface Conversation {
   id: number;
-  type: 'direct' | 'group';
+  type: 'direct' | 'group' | 'saved'; // saved: Saved Messages, a chat with only you in it
   title: string;
   avatar: string;
   members: User[];

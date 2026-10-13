@@ -1,4 +1,4 @@
-import { Check, CheckCheck, CircleAlert, Clock, Download, FileText, Forward, Reply } from 'lucide-react';
+import { Check, CheckCheck, CircleAlert, Clock, Download, FileText, Forward, Reply, Trash2 } from 'lucide-react';
 import { memo, useRef, useState } from 'react';
 import { mediaUrl } from '../lib/config';
 import { formatBytes, formatTime } from '../lib/format';
@@ -80,7 +80,7 @@ function useGestures(msg: Message, onMenu: Props['onMenu'], onReply: Props['onRe
       const mx = e.clientX - st.x;
       const my = e.clientY - st.y;
       if (Math.abs(mx) > 8 || Math.abs(my) > 8) clearTimeout(st.timer);
-      if (e.pointerType === 'touch' && msg.type !== 'deleted' && msg.id) {
+      if (e.pointerType === 'touch' && !msg.deletedAt && msg.id) {
         if (!st.swiping && mx < -12 && Math.abs(mx) > Math.abs(my) * 1.5) st.swiping = true;
         if (st.swiping) setDx(Math.max(-80, Math.min(0, mx)));
       }
@@ -114,7 +114,7 @@ function MessageBubble(p: Props) {
   const { msg, mine } = p;
   const { row, bubble, dx, handlers, openMenu, longPressed } = useGestures(msg, p.onMenu, p.onReply);
   const src = msg.localUrl || mediaUrl(msg.mediaUrl);
-  const deleted = msg.type === 'deleted';
+  const deleted = !!msg.deletedAt; // deleted for everyone; only admins see it, marked
   const sending = !msg.id && msg.status === 'sending';
 
   const meta = (
@@ -152,9 +152,14 @@ function MessageBubble(p: Props) {
       <div className="msg-stack" style={dx ? { transform: `translateX(${dx}px)` } : undefined}>
         <div
           ref={bubble}
-          className={`bubble ${mine ? 'bubble-out' : 'bubble-in'} bubble-${msg.type} ${msg.reply ? 'has-reply' : ''}`}
+          className={`bubble ${mine ? 'bubble-out' : 'bubble-in'} bubble-${msg.type} ${msg.reply ? 'has-reply' : ''} ${deleted ? 'bubble-deleted' : ''}`}
           onClick={onClick}
         >
+          {deleted && (
+            <div className="msg-deleted-tag">
+              <Trash2 size={13} /> Deleted
+            </div>
+          )}
           {p.senderName && (
             <div className="msg-sender" style={{ color: p.senderColor }}>
               {p.senderName}
@@ -166,7 +171,7 @@ function MessageBubble(p: Props) {
             </div>
           )}
           {msg.reply && (
-            <button className="msg-reply" onClick={() => p.onJump(msg.reply!.id)}>
+            <button className="msg-reply" onClick={() => msg.reply!.type !== 'deleted' && p.onJump(msg.reply!.id)}>
               <span className="msg-reply-name">{p.replyName}</span>
               <span className="msg-reply-text" dir="auto">
                 {previewOf(msg.reply)}
@@ -174,12 +179,6 @@ function MessageBubble(p: Props) {
             </button>
           )}
 
-          {deleted && (
-            <div className="msg-text msg-deleted">
-              🚫 This message was deleted
-              {meta}
-            </div>
-          )}
           {msg.type === 'image' && (
             <button className="msg-image" onClick={() => !sending && p.onOpenImage(src)}>
               <img src={src} alt="Photo" loading="lazy" />
@@ -192,7 +191,7 @@ function MessageBubble(p: Props) {
               {sending && <Progress value={msg.progress} />}
             </div>
           )}
-          {msg.type === 'audio' && <AudioMessage src={src} duration={msg.duration} seed={msg.id || msg.createdAt} />}
+          {msg.type === 'audio' && <AudioMessage msg={msg} />}
           {msg.type === 'file' && (
             <a className="msg-file" href={sending ? undefined : fileHref(msg)} target="_blank" rel="noreferrer" download={msg.fileName}>
               <span className="msg-file-icon">
@@ -218,16 +217,14 @@ function MessageBubble(p: Props) {
               {meta}
             </div>
           ) : (
-            !deleted && (
-              <div className={`msg-media-meta ${msg.body ? 'has-caption' : ''}`}>
-                {msg.body && (
-                  <span className="msg-caption" dir="auto">
-                    <Linkified text={msg.body} />
-                  </span>
-                )}
-                {meta}
-              </div>
-            )
+            <div className={`msg-media-meta ${msg.body ? 'has-caption' : ''}`}>
+              {msg.body && (
+                <span className="msg-caption" dir="auto">
+                  <Linkified text={msg.body} />
+                </span>
+              )}
+              {meta}
+            </div>
           )}
           {msg.status === 'failed' && <div className="msg-failed">Not sent · tap to retry</div>}
         </div>
@@ -237,6 +234,7 @@ function MessageBubble(p: Props) {
               <button
                 key={emoji}
                 className={`reaction ${users.includes(p.me) ? 'mine' : ''}`}
+                disabled={deleted}
                 onClick={() => p.onReact(msg, emoji)}
               >
                 <span>{emoji}</span>

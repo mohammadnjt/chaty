@@ -5,6 +5,7 @@
 import { api } from './api';
 import { isNativeShell, storage } from './config';
 import { socket } from './socket';
+import { appVisible, onAppVisibility } from './visibility';
 
 // Public web settings of the Firebase project (safe to ship to browsers).
 const firebaseConfig = {
@@ -21,8 +22,12 @@ const OFF = 'chaty.pushOff'; // turned off in Settings
 
 interface AppPush {
   pushToken?: () => void;
+  clearNotification?: (tag: string) => void;
 }
 const appPush = () => (window as unknown as { ChatyApp?: AppPush }).ChatyApp;
+
+// The server takes a read chat's notification off this phone too, if the app can do that silently.
+const appCanClear = () => typeof appPush()?.clearNotification === 'function';
 
 /** The Android app's push address ("" if Firebase isn't available on this phone). */
 function appToken(): Promise<string> {
@@ -81,7 +86,7 @@ async function register(ask: boolean): Promise<boolean> {
     // Android asks about notifications itself (Android 13+).
     const token = await appToken();
     if (!token) return false;
-    await api.registerPush(token, 'android');
+    await api.registerPush(token, 'android', appCanClear());
     storage.set(TOKEN, token);
     return true;
   }
@@ -116,20 +121,32 @@ export async function disablePush(byChoice = false) {
   }
 }
 
-// The server pushes only to people who don't have the app in front of them,
-// so tell it when this device goes to the background and back.
-let background = false;
-
-function reportVisibility() {
-  socket.send('visibility', { hidden: background || document.visibilityState === 'hidden' });
+/** Takes this device's notification for a chat down: the chat has been read. */
+export function clearChatNotification(conversationId: number) {
+  const tag = `chat-${conversationId}`;
+  if (isNativeShell) {
+    try {
+      appPush()?.clearNotification?.(tag);
+    } catch {
+      /* older app */
+    }
+    return;
+  }
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker
+    .getRegistration()
+    .then((reg) => reg?.getNotifications({ tag }))
+    .then((list) => list?.forEach((n) => n.close()))
+    .catch(() => {});
 }
 
-document.addEventListener('visibilitychange', reportVisibility);
-// The Android app says when it's sent to the background (its WebView stays "visible").
-window.addEventListener('chaty-app-state', (e) => {
-  background = (e as CustomEvent<string>).detail === 'background';
-  reportVisibility();
-});
+// The server pushes only to people who don't have the app in front of them,
+// so tell it when this device goes to the background and back.
+function reportVisibility() {
+  socket.send('visibility', { hidden: !appVisible() });
+}
+
+onAppVisibility(reportVisibility);
 socket.on('hello', reportVisibility);
 
 // Firebase can hand the Android app a new push address at any time.
@@ -137,6 +154,6 @@ window.addEventListener('chaty-push-token', (e) => {
   const token = (e as CustomEvent<string>).detail;
   if (token && storage.get(TOKEN) && storage.get(TOKEN) !== token) {
     storage.set(TOKEN, token);
-    void api.registerPush(token, 'android').catch(() => {});
+    void api.registerPush(token, 'android', appCanClear()).catch(() => {});
   }
 });

@@ -23,23 +23,26 @@ import (
 )
 
 // Push notifications through Firebase Cloud Messaging (HTTP v1), for devices
-// that aren't looking at the app: new messages, incoming and missed calls.
+// that aren't looking at the app: new messages, incoming and missed calls. A
+// chat's notification is taken down again once it's read or its message is
+// deleted (on devices that can do that silently: the Android app).
 // Enabled when a Firebase service-account file is present (FIREBASE_CREDENTIALS,
 // or firebase-service-account.json in the data folder).
 
 type PushRec struct {
 	Token     string `json:"token"`
 	UserID    int64  `json:"userId"`
-	Platform  string `json:"platform"` // web | android
+	Platform  string `json:"platform"`           // web | android
+	CanClear  bool   `json:"canClear,omitempty"` // takes "clear" pushes, which show nothing
 	UpdatedAt int64  `json:"updatedAt"`
 }
 
 // ---------- store ----------
 
-func (s *Store) SavePushToken(uid int64, token, platform string) {
+func (s *Store) SavePushToken(uid int64, token, platform string, canClear bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	rec := &PushRec{Token: token, UserID: uid, Platform: platform, UpdatedAt: nowMs()}
+	rec := &PushRec{Token: token, UserID: uid, Platform: platform, CanClear: canClear, UpdatedAt: nowMs()}
 	s.pushTokens[token] = rec
 	s.w.put("push", token, rec)
 }
@@ -101,6 +104,9 @@ type Pusher struct {
 	mu        sync.Mutex
 	access    string
 	accessExp time.Time
+
+	shownMu sync.Mutex
+	shown   map[int64]map[int64]int64 // user -> chat -> the message its notification shows
 }
 
 // newPusher returns nil (push off) when there are no credentials.
@@ -132,7 +138,8 @@ func newPusher(path string, store *Store) *Pusher {
 		return nil
 	}
 	log.Printf("push: Firebase project %s", acct.ProjectID)
-	return &Pusher{store: store, acct: acct, key: key, http: &http.Client{Timeout: 15 * time.Second}}
+	return &Pusher{store: store, acct: acct, key: key, http: &http.Client{Timeout: 15 * time.Second},
+		shown: map[int64]map[int64]int64{}}
 }
 
 func (p *Pusher) Enabled() bool { return p != nil }
@@ -148,26 +155,81 @@ func (p *Pusher) Notify(uid int64, data map[string]string, ttl time.Duration) {
 		return
 	}
 	for _, t := range p.store.PushTokens(uid) {
-		go func(t PushRec) {
-			err := p.send(t.Token, data, ttl)
-			switch {
-			case errors.Is(err, errTokenGone):
-				p.store.DeletePushToken(t.Token)
-			case err != nil:
-				log.Printf("push to %d (%s): %v", uid, t.Platform, err)
-			}
-		}(t)
+		p.sendTo(uid, t, data, ttl, true)
+	}
+}
+
+func (p *Pusher) sendTo(uid int64, t PushRec, data map[string]string, ttl time.Duration, urgent bool) {
+	go func() {
+		err := p.send(t.Token, data, ttl, urgent)
+		switch {
+		case errors.Is(err, errTokenGone):
+			p.store.DeletePushToken(t.Token)
+		case err != nil:
+			log.Printf("push to %d (%s): %v", uid, t.Platform, err)
+		}
+	}()
+}
+
+func chatTag(conv int64) string { return fmt.Sprintf("chat-%d", conv) }
+
+// shownMessage notes that the user's notification for a chat now shows msgID.
+func (p *Pusher) shownMessage(uid, conv, msgID int64) {
+	p.shownMu.Lock()
+	defer p.shownMu.Unlock()
+	if p.shown[uid] == nil {
+		p.shown[uid] = map[int64]int64{}
+	}
+	p.shown[uid][conv] = msgID
+}
+
+// Read takes the chat's notification down once the user has read up to upTo.
+func (p *Pusher) Read(uid, conv, upTo int64) {
+	p.withdraw(uid, conv, func(shown int64) bool { return shown <= upTo })
+}
+
+// Deleted takes the chat's notification down if it shows a message that's
+// now gone for the user.
+func (p *Pusher) Deleted(uid, conv, msgID int64) {
+	p.withdraw(uid, conv, func(shown int64) bool { return shown == msgID })
+}
+
+func (p *Pusher) withdraw(uid, conv int64, done func(shown int64) bool) {
+	if p == nil {
+		return
+	}
+	p.shownMu.Lock()
+	shown, ok := p.shown[uid][conv]
+	ok = ok && done(shown)
+	if ok {
+		delete(p.shown[uid], conv)
+	}
+	p.shownMu.Unlock()
+	if !ok {
+		return
+	}
+	// Browsers must show something for every push, so only the Android app gets these.
+	for _, t := range p.store.PushTokens(uid) {
+		if t.CanClear {
+			p.sendTo(uid, t, map[string]string{"type": "clear", "tag": chatTag(conv)}, 24*time.Hour, false)
+		}
 	}
 }
 
 var errTokenGone = errors.New("device token no longer valid")
 
-func (p *Pusher) send(token string, data map[string]string, ttl time.Duration) error {
+// send delivers one push. Urgent ones wake the phone; FCM may throttle an app
+// whose urgent pushes don't show a notification, so silent ones aren't.
+func (p *Pusher) send(token string, data map[string]string, ttl time.Duration, urgent bool) error {
 	secs := fmt.Sprintf("%d", int(ttl.Seconds()))
+	priority := "NORMAL"
+	if urgent {
+		priority = "HIGH"
+	}
 	body, _ := json.Marshal(map[string]any{"message": map[string]any{
 		"token":   token,
 		"data":    data,
-		"android": map[string]any{"priority": "HIGH", "ttl": secs + "s"},
+		"android": map[string]any{"priority": priority, "ttl": secs + "s"},
 		"webpush": map[string]any{"headers": map[string]string{"Urgency": "high", "TTL": secs}},
 	}})
 	for attempt := 0; attempt < 2; attempt++ {
@@ -248,7 +310,10 @@ func (s *Server) pushRoutes(mux *http.ServeMux) {
 }
 
 func (s *Server) registerPush(w http.ResponseWriter, r *http.Request, me UserRec) {
-	var in struct{ Token, Platform string }
+	var in struct {
+		Token, Platform string
+		CanClear        bool `json:"canClear"`
+	}
 	if !readJSON(w, r, &in) {
 		return
 	}
@@ -260,7 +325,7 @@ func (s *Server) registerPush(w http.ResponseWriter, r *http.Request, me UserRec
 		httpError(w, http.StatusBadRequest, "invalid push token")
 		return
 	}
-	s.store.SavePushToken(me.ID, in.Token, in.Platform)
+	s.store.SavePushToken(me.ID, in.Token, in.Platform, in.CanClear && in.Platform == "android")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -319,7 +384,8 @@ func (s *Server) pushMessage(m Message) {
 		}
 		s.push.Notify(uid, map[string]string{
 			"type": "message", "title": title, "body": body,
-			"tag": fmt.Sprintf("chat-%d", m.ConversationID), "url": fmt.Sprintf("/app/#/chat/%d", m.ConversationID),
+			"tag": chatTag(m.ConversationID), "url": fmt.Sprintf("/app/#/chat/%d", m.ConversationID),
 		}, 24*time.Hour)
+		s.push.shownMessage(uid, m.ConversationID, m.ID)
 	}
 }

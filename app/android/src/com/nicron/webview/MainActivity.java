@@ -44,7 +44,9 @@ import org.json.JSONObject;
  * Nitron's manifest still points here) plus what a messenger needs on top:
  * call audio routing (window.ChatyAudio), the file picker for attachments,
  * pictures from the keyboard (ChatyWebView), push notifications
- * (ChatyMessagingService), and opening links and downloads outside the app.
+ * (ChatyMessagingService), voice messages that keep playing in the
+ * background (window.ChatyPlayer, VoicePlayerService), and opening links and
+ * downloads outside the app.
  */
 public class MainActivity extends Activity {
     private static final String ASSET_HOST = "appassets.androidplatform.net";
@@ -116,6 +118,18 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** A button on the voice player's notification, lock screen or headset: the page acts on it. */
+    static void playerButton(final String action) {
+        final MainActivity a = current.get();
+        if (a == null || action == null) return;
+        a.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                a.dispatch("chaty-player", action);
+            }
+        });
+    }
+
     /** Firebase gave this phone a new push address: the page registers it with the server. */
     static void onPushToken(final String token) {
         final MainActivity a = current.get();
@@ -145,6 +159,8 @@ public class MainActivity extends Activity {
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(this.webView, true);
+        // The page keeps its priority in the background, so a voice message keeps playing.
+        if (Build.VERSION.SDK_INT >= 26) this.webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         this.webView.setWebViewClient(new NitronWebViewClient());
         this.webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -191,6 +207,7 @@ public class MainActivity extends Activity {
         this.callAudio = new CallAudio(this, this.webView);
         this.webView.addJavascriptInterface(this.callAudio, "ChatyAudio");
         this.webView.addJavascriptInterface(new ChatyAppInterface(), "ChatyApp");
+        this.webView.addJavascriptInterface(new ChatyPlayerInterface(), "ChatyPlayer");
     }
 
     // The WebView's own picker only honours the first type in accept="image/*,video/*".
@@ -309,6 +326,12 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** Takes down a push notification the page no longer needs, by its tag ("chat-12"). */
+        @JavascriptInterface
+        public void clearNotification(String tag) {
+            if (tag != null) ChatyMessagingService.cancel(MainActivity.this, tag);
+        }
+
         /** Shows Android's prompt; the page hears back through a "chaty-permissions" event. */
         @JavascriptInterface
         public void requestPermissions(String names) {
@@ -319,6 +342,45 @@ public class MainActivity extends Activity {
                 public void run() {
                     if (Build.VERSION.SDK_INT >= 23) MainActivity.this.requestPermissions(list, PERMISSIONS_REQUEST);
                     else dispatch("chaty-permissions", "done");
+                }
+            });
+        }
+    }
+
+    /**
+     * window.ChatyPlayer: the voice message playing, for VoicePlayerService.
+     * show() takes {title, text, url, playing, position, duration, rate} as JSON.
+     */
+    private class ChatyPlayerInterface {
+        @JavascriptInterface
+        public void show(String json) {
+            final Bundle state = new Bundle();
+            try {
+                JSONObject o = new JSONObject(json);
+                state.putString("title", o.optString("title"));
+                state.putString("text", o.optString("text"));
+                state.putString("url", o.optString("url"));
+                state.putBoolean("playing", o.optBoolean("playing"));
+                state.putLong("position", o.optLong("position"));
+                state.putLong("duration", o.optLong("duration"));
+                state.putFloat("rate", (float) o.optDouble("rate", 1));
+            } catch (Exception e) {
+                return;
+            }
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    VoicePlayerService.show(MainActivity.this, state);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void hide() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    VoicePlayerService.hide(MainActivity.this);
                 }
             });
         }
@@ -439,6 +501,7 @@ public class MainActivity extends Activity {
         if (this.callAudio != null) {
             this.callAudio.stop();
         }
+        VoicePlayerService.hide(this);
         WebView webView = this.webView;
         if (webView != null) {
             webView.destroy();

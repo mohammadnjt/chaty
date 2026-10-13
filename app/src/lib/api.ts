@@ -137,6 +137,7 @@ export const api = {
   conversation: (id: number) => request<Conversation>('GET', `/api/conversations/${id}`),
   /** query = the phone number / @ID used to find someone new */
   openDirect: (userId: number, query = '') => request<Conversation>('POST', '/api/conversations/direct', { userId, query }),
+  savedMessages: () => request<Conversation>('POST', '/api/conversations/saved'),
   createGroup: (title: string, memberIds: number[], queries: Record<number, string> = {}) =>
     request<Conversation>('POST', '/api/conversations/group', { title, memberIds, queries }),
   blocks: () => request<User[]>('GET', '/api/blocks'),
@@ -153,12 +154,14 @@ export const api = {
   editMessage: (id: number, body: string) => request<Message>('PATCH', `/api/messages/${id}`, { body }),
   deleteMessage: (id: number, forAll: boolean) => request('DELETE', `/api/messages/${id}?for=${forAll ? 'all' : 'me'}`),
   react: (id: number, emoji: string) => request<Message>('POST', `/api/messages/${id}/react`, { emoji }),
+  save: (id: number) => request<Message>('POST', `/api/messages/${id}/save`),
   forward: (id: number, conversationIds: number[]) =>
     request<Message[]>('POST', `/api/messages/${id}/forward`, { conversationIds }),
   calls: () => request<CallRecord[]>('GET', '/api/calls'),
   upload: (file: Blob, filename: string, onProgress?: (p: number) => void) =>
     uploadWithProgress(file, filename, onProgress) as Promise<{ url: string; name: string; size: number }>,
-  registerPush: (token: string, platform: 'web' | 'android') => request('POST', '/api/push', { token, platform }),
+  registerPush: (token: string, platform: 'web' | 'android', canClear = false) =>
+    request('POST', '/api/push', { token, platform, canClear }),
   unregisterPush: (token: string) => request('DELETE', '/api/push', { token }),
   stories: () => request<{ mine: Story[]; feed: StoryGroup[] }>('GET', '/api/stories'),
   postStory: (file: Blob, name: string, caption: string, onProgress?: (p: number) => void) =>

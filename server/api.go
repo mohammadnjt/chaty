@@ -47,6 +47,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/conversations", s.authed(s.listConversations))
 	mux.HandleFunc("POST /api/conversations/direct", s.authed(s.openDirect))
 	mux.HandleFunc("POST /api/conversations/group", s.authed(s.createGroup))
+	mux.HandleFunc("POST /api/conversations/saved", s.authed(s.openSaved))
 	mux.HandleFunc("GET /api/conversations/{id}", s.authed(s.getConversation))
 	mux.HandleFunc("GET /api/conversations/{id}/messages", s.authed(s.listMessages))
 	mux.HandleFunc("POST /api/conversations/{id}/messages", s.authed(s.sendMessage))
@@ -59,6 +60,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/messages/{id}", s.authed(s.deleteMessage))
 	mux.HandleFunc("POST /api/messages/{id}/react", s.authed(s.reactMessage))
 	mux.HandleFunc("POST /api/messages/{id}/forward", s.authed(s.forwardMessage))
+	mux.HandleFunc("POST /api/messages/{id}/save", s.authed(s.saveMessage))
 	mux.HandleFunc("GET /api/calls", s.authed(s.listCalls))
 	mux.HandleFunc("POST /api/upload", s.authed(s.upload))
 	s.adminRoutes(mux)
@@ -625,6 +627,21 @@ func (s *Server) openDirect(w http.ResponseWriter, r *http.Request, me UserRec) 
 	writeJSON(w, http.StatusOK, c)
 }
 
+// openSaved returns the user's Saved Messages chat.
+func (s *Server) openSaved(w http.ResponseWriter, r *http.Request, me UserRec) {
+	id, err := s.store.SavedConversation(me.ID)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	c, err := s.loadConversation(id, me.ID)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
 func (s *Server) createGroup(w http.ResponseWriter, r *http.Request, me UserRec) {
 	if !s.features().Groups {
 		disabled(w)
@@ -762,7 +779,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, me UserRec)
 // messageFor loads a message the user can act on.
 func (s *Server) messageFor(w http.ResponseWriter, r *http.Request, me UserRec) (MsgRec, bool) {
 	m, ok := s.store.Message(pathID(r))
-	if !ok || !s.store.IsMember(m.ConvID, me.ID) || containsID(m.HiddenFor, me.ID) {
+	if !ok || !s.store.IsMember(m.ConvID, me.ID) || !visibleTo(&m, me.ID, me.Role == "admin") {
 		httpError(w, http.StatusNotFound, "message not found")
 		return m, false
 	}
@@ -783,7 +800,7 @@ func (s *Server) editMessage(w http.ResponseWriter, r *http.Request, me UserRec)
 		return
 	}
 	in.Body = strings.TrimSpace(in.Body)
-	if m.SenderID != me.ID || m.Type == "deleted" {
+	if m.SenderID != me.ID || m.gone() {
 		httpError(w, http.StatusForbidden, "you can only edit your own messages")
 		return
 	}
@@ -828,9 +845,15 @@ func (s *Server) deleteMessage(w http.ResponseWriter, r *http.Request, me UserRe
 		httpError(w, http.StatusForbidden, "you can only delete your own messages for everyone")
 		return
 	}
+	// Deleted for everyone: it disappears from the chat, but admins keep
+	// seeing it (marked as deleted). An admin who deletes it doesn't.
 	view, err := s.store.UpdateMessage(m.ID, func(x *MsgRec) error {
-		x.Type, x.Body, x.MediaURL, x.FileName, x.FileSize, x.Duration = "deleted", "", "", "", 0, 0
-		x.Reactions, x.ReplyTo, x.ForwardedFrom = nil, 0, ""
+		if x.DeletedAt == 0 {
+			x.DeletedAt = nowMs()
+		}
+		if me.Role == "admin" && !containsID(x.HiddenFor, me.ID) {
+			x.HiddenFor = append(x.HiddenFor, me.ID)
+		}
 		return nil
 	})
 	if err != nil {
@@ -838,11 +861,18 @@ func (s *Server) deleteMessage(w http.ResponseWriter, r *http.Request, me UserRe
 		return
 	}
 	members := s.store.MemberIDs(m.ConvID)
-	s.hub.sendToUsers(members, "message:update", view)
+	for _, uid := range members {
+		if s.store.Visible(m.ID, uid) {
+			s.hub.sendToUsers([]int64{uid}, "message:update", view)
+			continue
+		}
+		s.hub.sendToUsers([]int64{uid}, "message:hide", map[string]any{"conversationId": m.ConvID, "id": m.ID, "deleted": true})
+		s.push.Deleted(uid, m.ConvID, m.ID)
+	}
 	if s.store.UnpinIf(m.ConvID, m.ID) {
 		s.hub.sendToUsers(members, "pin", map[string]any{"conversationId": m.ConvID, "pinned": nil})
 	}
-	writeJSON(w, http.StatusOK, view)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) reactMessage(w http.ResponseWriter, r *http.Request, me UserRec) {
@@ -858,7 +888,7 @@ func (s *Server) reactMessage(w http.ResponseWriter, r *http.Request, me UserRec
 	if !readJSON(w, r, &in) {
 		return
 	}
-	if in.Emoji == "" || utf8.RuneCountInString(in.Emoji) > 8 || m.Type == "deleted" {
+	if in.Emoji == "" || utf8.RuneCountInString(in.Emoji) > 8 || m.gone() {
 		httpError(w, http.StatusBadRequest, "invalid reaction")
 		return
 	}
@@ -907,7 +937,7 @@ func (s *Server) forwardMessage(w http.ResponseWriter, r *http.Request, me UserR
 	if !readJSON(w, r, &in) {
 		return
 	}
-	if m.Type == "deleted" || len(in.ConversationIDs) == 0 || len(in.ConversationIDs) > 20 {
+	if m.gone() || len(in.ConversationIDs) == 0 || len(in.ConversationIDs) > 20 {
 		httpError(w, http.StatusBadRequest, "nothing to forward")
 		return
 	}
@@ -922,14 +952,44 @@ func (s *Server) forwardMessage(w http.ResponseWriter, r *http.Request, me UserR
 		if !s.store.IsMember(cid, me.ID) || s.blockReason(cid, me.ID) != "" {
 			continue
 		}
-		msg, _ := s.store.InsertMessage(MsgRec{
-			ConvID: cid, SenderID: me.ID, Type: m.Type, Body: m.Body, MediaURL: m.MediaURL, FileName: m.FileName,
-			FileSize: m.FileSize, Duration: m.Duration, ForwardedFrom: from,
-		})
-		s.publish(msg)
-		out = append(out, msg)
+		out = append(out, s.copyMessage(m, cid, me.ID, from))
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// copyMessage posts a copy of m in conversation cid, sent by uid.
+func (s *Server) copyMessage(m MsgRec, cid, uid int64, forwardedFrom string) Message {
+	msg, _ := s.store.InsertMessage(MsgRec{
+		ConvID: cid, SenderID: uid, Type: m.Type, Body: m.Body, MediaURL: m.MediaURL, FileName: m.FileName,
+		FileSize: m.FileSize, Duration: m.Duration, ForwardedFrom: forwardedFrom,
+	})
+	s.publish(msg)
+	return msg
+}
+
+// saveMessage keeps a copy of a message in the user's Saved Messages (also
+// when forwarding is turned off). Your own messages are saved as they are.
+func (s *Server) saveMessage(w http.ResponseWriter, r *http.Request, me UserRec) {
+	m, ok := s.messageFor(w, r, me)
+	if !ok {
+		return
+	}
+	if m.gone() {
+		httpError(w, http.StatusBadRequest, "nothing to save")
+		return
+	}
+	cid, err := s.store.SavedConversation(me.ID)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	from := m.ForwardedFrom
+	if from == "" && m.SenderID != me.ID {
+		if u, ok := s.store.UserByID(m.SenderID); ok {
+			from = u.Name
+		}
+	}
+	writeJSON(w, http.StatusOK, s.copyMessage(m, cid, me.ID, from))
 }
 
 func (s *Server) pinMessage(w http.ResponseWriter, r *http.Request, me UserRec) {
@@ -972,6 +1032,7 @@ func (s *Server) markRead(w http.ResponseWriter, r *http.Request, me UserRec) {
 	}
 	v := s.store.MarkRead(id, me.ID, in.MessageID)
 	s.hub.sendToUsers(s.store.MemberIDs(id), "read", map[string]any{"conversationId": id, "userId": me.ID, "messageId": v})
+	s.push.Read(me.ID, id, v)
 	writeJSON(w, http.StatusOK, map[string]any{"messageId": v})
 }
 

@@ -1,4 +1,4 @@
-import { Users } from 'lucide-react';
+import { Bookmark, Users } from 'lucide-react';
 import { useState } from 'react';
 import { mediaUrl } from '../lib/config';
 import { useStoryState, watchStories } from '../store/stories';
@@ -27,17 +27,18 @@ interface Props {
   size?: number;
   online?: boolean;
   group?: boolean;
+  saved?: boolean; // Saved Messages
   ring?: boolean;
   className?: string;
   /** This person's user id: a ring shows when they have a story, and tapping the photo plays it. */
   storyOf?: number;
 }
 
-export default function Avatar({ name, src, size = 52, online, group, ring = true, className = '', storyOf }: Props) {
+export default function Avatar({ name, src, size = 52, online, group, saved, ring = true, className = '', storyOf }: Props) {
   const [broken, setBroken] = useState(false);
   const story = useStoryState(storyOf);
-  const [a, b] = GRADIENTS[hash(name || '?') % GRADIENTS.length];
-  const showImage = src && !broken;
+  const [a, b] = saved ? ['#3b82f6', '#8b5cf6'] : GRADIENTS[hash(name || '?') % GRADIENTS.length];
+  const showImage = src && !broken && !saved;
   const watch = (e: React.SyntheticEvent) => {
     // Not the chat row or header the photo sits in.
     e.stopPropagation();
@@ -60,7 +61,13 @@ export default function Avatar({ name, src, size = 52, online, group, ring = tru
         <img src={mediaUrl(src)} alt="" onError={() => setBroken(true)} draggable={false} />
       ) : (
         <div className="avatar-fallback" style={{ background: `linear-gradient(135deg, ${a}, ${b})` }}>
-          {group ? <Users size={size * 0.42} strokeWidth={2.2} /> : initials(name)}
+          {saved ? (
+            <Bookmark size={size * 0.42} strokeWidth={2.2} />
+          ) : group ? (
+            <Users size={size * 0.42} strokeWidth={2.2} />
+          ) : (
+            initials(name)
+          )}
         </div>
       )}
       {online && <span className="avatar-dot" style={{ width: size * 0.26, height: size * 0.26 }} />}
