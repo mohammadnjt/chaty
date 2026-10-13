@@ -2217,13 +2217,13 @@ button.user-row:active {
 }
 
 /* A message deleted for everyone, as admins still see it. */
-.bubble.bubble-deleted {
+.bubble.bubble-gone {
   background: rgba(242, 70, 90, 0.16);
   border: 1px solid rgba(242, 70, 90, 0.6);
   color: var(--text);
 }
 
-.msg-row.tail .bubble-deleted::before {
+.msg-row.tail .bubble-gone::before {
   display: none;
 }
 

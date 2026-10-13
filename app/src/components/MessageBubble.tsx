@@ -152,7 +152,7 @@ function MessageBubble(p: Props) {
       <div className="msg-stack" style={dx ? { transform: `translateX(${dx}px)` } : undefined}>
         <div
           ref={bubble}
-          className={`bubble ${mine ? 'bubble-out' : 'bubble-in'} bubble-${msg.type} ${msg.reply ? 'has-reply' : ''} ${deleted ? 'bubble-deleted' : ''}`}
+          className={`bubble ${mine ? 'bubble-out' : 'bubble-in'} bubble-${msg.type} ${msg.reply ? 'has-reply' : ''} ${deleted ? 'bubble-gone' : ''}`}
           onClick={onClick}
         >
           {deleted && (

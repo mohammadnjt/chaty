@@ -86,6 +86,10 @@ function presenceFrom(users: User[], into: Record<number, Presence>) {
   return out;
 }
 
+// A message an older server deleted for everyone: emptied, typed "deleted".
+// It's gone, like the ones today's server simply takes away.
+const wiped = (m: Message) => m.type === 'deleted';
+
 const isViewing = (convId: number) => get().activeId === convId && appVisible();
 
 function upsert(list: Message[], msg: Message): Message[] {
@@ -153,13 +157,14 @@ export function ensureConversation(id: number, refresh = false): Promise<Convers
 export const addConversation = putConversation;
 
 export async function loadMessages(convId: number) {
-  const msgs = await api.messages(convId);
+  const page = await api.messages(convId);
+  const msgs = page.filter((m) => !wiped(m));
   set((s) => {
     let list = msgs;
     for (const m of s.messages[convId] ?? []) if (!m.id) list = upsert(list, m); // keep unsent ones
     return {
       messages: { ...s.messages, [convId]: list },
-      hasMore: { ...s.hasMore, [convId]: msgs.length >= PAGE_SIZE },
+      hasMore: { ...s.hasMore, [convId]: page.length >= PAGE_SIZE },
     };
   });
 }
@@ -170,7 +175,7 @@ export async function loadOlder(convId: number) {
   if (!first) return;
   const older = await api.messages(convId, first.id);
   set((s) => ({
-    messages: { ...s.messages, [convId]: [...older, ...(s.messages[convId] ?? [])] },
+    messages: { ...s.messages, [convId]: [...older.filter((m) => !wiped(m)), ...(s.messages[convId] ?? [])] },
     hasMore: { ...s.hasMore, [convId]: older.length >= PAGE_SIZE },
   }));
 }
@@ -212,6 +217,7 @@ export function receiveMessage(msg: Message) {
 
 /** An edited / reacted message, or (for admins) one deleted for everyone. */
 export function updateMessage(msg: Message) {
+  if (wiped(msg)) return hideMessage({ conversationId: msg.conversationId, id: msg.id, deleted: true });
   const quote = msg.deletedAt ? { type: 'deleted' as const, body: '' } : { type: msg.type, body: msg.body };
   set((s) => {
     const conv = s.conversations[msg.conversationId];
