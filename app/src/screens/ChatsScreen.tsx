@@ -1,7 +1,7 @@
 import { Bell, BellOff, Bookmark, CheckCheck, Check, CirclePlus, MessageSquare, Search, X } from 'lucide-react';
 import { memo, useMemo, useRef, useState } from 'react';
 import Avatar from '../components/Avatar';
-import Logo from '../components/Logo';
+import AppMark from '../components/AppMark';
 import PlayerBar from '../components/PlayerBar';
 import Scenery from '../components/Scenery';
 import TabBar from '../components/TabBar';
@@ -21,7 +21,7 @@ export function HeroHeader({ title, children }: { title: string; children?: Reac
       <header className="hero">
         <Scenery variant="header" className="hero-bg" />
         <div className="hero-row">
-          <Logo size={34} />
+          <AppMark />
           <h1>{title}</h1>
           <div className="spacer" />
           {children}

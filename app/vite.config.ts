@@ -27,8 +27,12 @@ function stampServiceWorker(): Plugin {
   };
 }
 
+// The app's version (the APK's), to tell when the server offers a newer one.
+const appVersion = JSON.parse(readFileSync(resolve(root, 'nitron.config.json'), 'utf8')).version as string;
+
 export default defineConfig({
   plugins: [react(), stampServiceWorker()],
+  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   server: {
     host: true,
     port: 5177,

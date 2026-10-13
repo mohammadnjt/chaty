@@ -278,6 +278,98 @@ svg {
   color: #fff;
 }
 
+/* A newer app is out: a rising arrow in place of the logo, "Update now" under it. */
+.update-mark {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.update-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--accent-grad);
+  color: #fff;
+  animation: update-pulse 2s ease-out infinite;
+}
+
+.update-btn svg {
+  animation: update-rise 1.8s ease-in-out infinite;
+}
+
+@keyframes update-rise {
+  0% {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  25%,
+  70% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-16px);
+    opacity: 0;
+  }
+}
+
+@keyframes update-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(167, 123, 255, 0.6);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 10px rgba(167, 123, 255, 0);
+  }
+}
+
+.update-tip {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: -6px;
+  padding: 6px 11px;
+  border-radius: 10px;
+  background: var(--accent-grad);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(20, 10, 60, 0.35);
+  animation: update-tip-in 0.25s ease-out;
+}
+
+.update-tip::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 18px;
+  width: 10px;
+  height: 10px;
+  background: #9a6bff;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+@keyframes update-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-btn,
+  .update-btn svg {
+    animation: none;
+  }
+}
+
 /* ---------- search ---------- */
 
 .search-wrap {

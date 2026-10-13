@@ -60,7 +60,6 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/messages/{id}", s.authed(s.deleteMessage))
 	mux.HandleFunc("POST /api/messages/{id}/react", s.authed(s.reactMessage))
 	mux.HandleFunc("POST /api/messages/{id}/forward", s.authed(s.forwardMessage))
-	mux.HandleFunc("POST /api/messages/{id}/save", s.authed(s.saveMessage))
 	mux.HandleFunc("GET /api/calls", s.authed(s.listCalls))
 	mux.HandleFunc("POST /api/upload", s.authed(s.upload))
 	s.adminRoutes(mux)
@@ -952,44 +951,14 @@ func (s *Server) forwardMessage(w http.ResponseWriter, r *http.Request, me UserR
 		if !s.store.IsMember(cid, me.ID) || s.blockReason(cid, me.ID) != "" {
 			continue
 		}
-		out = append(out, s.copyMessage(m, cid, me.ID, from))
+		msg, _ := s.store.InsertMessage(MsgRec{
+			ConvID: cid, SenderID: me.ID, Type: m.Type, Body: m.Body, MediaURL: m.MediaURL, FileName: m.FileName,
+			FileSize: m.FileSize, Duration: m.Duration, ForwardedFrom: from,
+		})
+		s.publish(msg)
+		out = append(out, msg)
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-// copyMessage posts a copy of m in conversation cid, sent by uid.
-func (s *Server) copyMessage(m MsgRec, cid, uid int64, forwardedFrom string) Message {
-	msg, _ := s.store.InsertMessage(MsgRec{
-		ConvID: cid, SenderID: uid, Type: m.Type, Body: m.Body, MediaURL: m.MediaURL, FileName: m.FileName,
-		FileSize: m.FileSize, Duration: m.Duration, ForwardedFrom: forwardedFrom,
-	})
-	s.publish(msg)
-	return msg
-}
-
-// saveMessage keeps a copy of a message in the user's Saved Messages (also
-// when forwarding is turned off). Your own messages are saved as they are.
-func (s *Server) saveMessage(w http.ResponseWriter, r *http.Request, me UserRec) {
-	m, ok := s.messageFor(w, r, me)
-	if !ok {
-		return
-	}
-	if m.gone() {
-		httpError(w, http.StatusBadRequest, "nothing to save")
-		return
-	}
-	cid, err := s.store.SavedConversation(me.ID)
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	from := m.ForwardedFrom
-	if from == "" && m.SenderID != me.ID {
-		if u, ok := s.store.UserByID(m.SenderID); ok {
-			from = u.Name
-		}
-	}
-	writeJSON(w, http.StatusOK, s.copyMessage(m, cid, me.ID, from))
 }
 
 func (s *Server) pinMessage(w http.ResponseWriter, r *http.Request, me UserRec) {

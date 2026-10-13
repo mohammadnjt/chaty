@@ -154,7 +154,6 @@ export const api = {
   editMessage: (id: number, body: string) => request<Message>('PATCH', `/api/messages/${id}`, { body }),
   deleteMessage: (id: number, forAll: boolean) => request('DELETE', `/api/messages/${id}?for=${forAll ? 'all' : 'me'}`),
   react: (id: number, emoji: string) => request<Message>('POST', `/api/messages/${id}/react`, { emoji }),
-  save: (id: number) => request<Message>('POST', `/api/messages/${id}/save`),
   forward: (id: number, conversationIds: number[]) =>
     request<Message[]>('POST', `/api/messages/${id}/forward`, { conversationIds }),
   calls: () => request<CallRecord[]>('GET', '/api/calls'),

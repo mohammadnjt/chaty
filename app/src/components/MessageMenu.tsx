@@ -1,4 +1,4 @@
-import { Bookmark, Copy, Forward, Pencil, Pin, PinOff, Reply, RotateCw, Trash2 } from 'lucide-react';
+import { Copy, Forward, Pencil, Pin, PinOff, Reply, RotateCw, Trash2 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { copyText } from '../lib/format';
 import type { Message } from '../lib/types';
@@ -19,7 +19,6 @@ interface Props {
   onEdit: () => void;
   onPin: () => void;
   onForward: () => void;
-  onSave: () => void;
   onDelete: (forAll: boolean) => void;
   onReact: (emoji: string) => void;
   onRetry: () => void;
@@ -120,11 +119,6 @@ export default function MessageMenu(p: Props) {
             {f.forwarding && sent && !deleted && (
               <button className="menu-item" onClick={act(p.onForward)}>
                 <Forward size={18} /> Forward
-              </button>
-            )}
-            {sent && !deleted && !p.saved && (
-              <button className="menu-item" onClick={act(p.onSave)}>
-                <Bookmark size={18} /> Save
               </button>
             )}
             {(f.deleteMessages || !sent) && (

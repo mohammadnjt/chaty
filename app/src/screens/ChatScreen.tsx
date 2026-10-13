@@ -29,7 +29,6 @@ import {
   reactTo,
   removeConversation,
   retryMessage,
-  saveMessage,
   sendMessage,
   setBlocked,
   setMuted,
@@ -614,7 +613,6 @@ export default function ChatScreen({ id }: { id: number }) {
           }}
           onPin={() => void pinMessage(id, pinned?.id === menu.msg.id ? null : menu.msg)}
           onForward={() => setForwarding(menu.msg)}
-          onSave={() => void saveMessage(menu.msg)}
           onDelete={(forAll) => void deleteMessage(menu.msg, forAll)}
           onReact={(e) => void reactTo(menu.msg, e)}
           onRetry={() => onRetry(menu.msg)}
@@ -628,8 +626,12 @@ export default function ChatScreen({ id }: { id: number }) {
             setForwarding(null);
             try {
               await forwardMessage(msg, [c.id]);
-              toast('Forwarded');
-              if (c.id !== id) navigate(`/chat/${c.id}`);
+              // Forwarding to Saved Messages is how you save one: stay here.
+              if (c.type === 'saved') toast('Saved to Saved Messages');
+              else {
+                toast('Forwarded');
+                if (c.id !== id) navigate(`/chat/${c.id}`);
+              }
             } catch (e) {
               toast(errorText(e));
             }

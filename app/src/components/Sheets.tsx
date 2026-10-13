@@ -1,9 +1,11 @@
 import { FileText, Film, Send, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { errorText } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import type { Conversation } from '../lib/types';
-import { activityOf, peerOf, titleOf, useChat } from '../store/chat';
+import { activityOf, openSaved, peerOf, titleOf, useChat } from '../store/chat';
 import { useConfig } from '../store/config';
+import { toast } from '../store/toast';
 import Avatar from './Avatar';
 
 // ---------- forward ----------
@@ -18,13 +20,24 @@ export function ForwardSheet({
   const me = useChat((s) => s.me);
   const conversations = useChat((s) => s.conversations);
   const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+  // Saved Messages first: forwarding there is how you save a message.
   const list = useMemo(
     () =>
       Object.values(conversations)
-        .filter((c) => titleOf(c, me).toLowerCase().includes(q.trim().toLowerCase()))
-        .sort((a, b) => activityOf(b) - activityOf(a)),
-    [conversations, me, q],
+        .filter((c) => titleOf(c, me).toLowerCase().includes(query))
+        .sort((a, b) => Number(b.type === 'saved') - Number(a.type === 'saved') || activityOf(b) - activityOf(a)),
+    [conversations, me, query],
   );
+  // Never opened yet: it's made when picked.
+  const savedMissing = !Object.values(conversations).some((c) => c.type === 'saved') && 'saved messages'.includes(query);
+  async function pickSaved() {
+    try {
+      onPick(await openSaved());
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -41,6 +54,15 @@ export function ForwardSheet({
           </label>
         </div>
         <div className="sheet-list">
+          {savedMissing && (
+            <button className="user-row" onClick={() => void pickSaved()}>
+              <Avatar name="Saved Messages" saved size={44} />
+              <div className="user-row-body">
+                <span className="user-name">Saved Messages</span>
+                <span className="user-sub">Only you</span>
+              </div>
+            </button>
+          )}
           {list.map((c) => {
             const peer = c.type === 'direct' ? peerOf(c, me) : null;
             const title = titleOf(c, me);
@@ -58,7 +80,7 @@ export function ForwardSheet({
               </button>
             );
           })}
-          {list.length === 0 && <p className="muted pad">No chats found.</p>}
+          {list.length === 0 && !savedMissing && <p className="muted pad">No chats found.</p>}
         </div>
       </div>
     </div>

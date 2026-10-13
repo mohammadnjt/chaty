@@ -485,16 +485,6 @@ export async function openSaved(): Promise<Conversation> {
   return c;
 }
 
-/** Keeps a copy of the message in Saved Messages. */
-export async function saveMessage(msg: Message) {
-  try {
-    receiveMessage(await api.save(msg.id));
-    toast('Saved to Saved Messages');
-  } catch (e) {
-    toast(errorText(e));
-  }
-}
-
 /** Drop a chat from this device (history cleared, group left). */
 export function removeConversation(id: number) {
   set((s) => {
