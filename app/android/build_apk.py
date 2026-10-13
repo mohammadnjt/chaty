@@ -25,6 +25,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
@@ -67,16 +69,27 @@ def run(*cmd, **kw):
 
 # ---------- Maven ----------
 
+unreachable = set()  # repositories that didn't answer during this build
+
+
 def fetch(path):
     """Downloads a Maven file once into android/.tools/m2."""
     local = TOOLS / 'm2' / path
     if local.exists():
         return local
     for repo in REPOS:
+        if repo in unreachable:
+            continue
         try:
-            with urllib.request.urlopen(f'{repo}/{path}', timeout=60) as r:
+            with urllib.request.urlopen(f'{repo}/{path}', timeout=30) as r:
                 data = r.read()
-        except Exception:
+        except urllib.error.HTTPError:
+            continue  # not in this repository
+        except Exception as e:
+            # Filtered or down (dl.google.com from Iran holds the connection,
+            # then drops it): don't wait on it again for every file.
+            unreachable.add(repo)
+            print(f'  skipping {urllib.parse.urlparse(repo).netloc}: {type(e).__name__}')
             continue
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_bytes(data)
@@ -92,11 +105,15 @@ def version_key(v):
     return [int(x) if x.isdigit() else -1 for x in re.split(r'[.-]', v)]
 
 
-def dependencies(g, art, v):
+def read_pom(g, art, v):
     f = fetch(artifact_path(g, art, v, 'pom'))
     if not f:
         sys.exit(f'✗ {g}:{art}:{v} not found in any Maven repository')
-    pom = ET.parse(f).getroot()
+    return ET.parse(f).getroot()
+
+
+def dependencies(g, art, v):
+    pom = read_pom(g, art, v)
     found = pom.find(POM + 'properties')
     props = {e.tag.replace(POM, ''): e.text for e in (found if found is not None else [])}
     out = []
@@ -134,8 +151,18 @@ def resolve(roots):
 
 
 def library_files(g, art, v):
-    """An AAR (Android library) or a plain JAR."""
-    return fetch(artifact_path(g, art, v, 'aar')) or fetch(artifact_path(g, art, v, 'jar'))
+    """An AAR (Android library) or a plain JAR, as its POM says. One already
+    downloaded is used without asking the network about the other kind."""
+    kinds = ('aar', 'jar') if read_pom(g, art, v).findtext(POM + 'packaging') == 'aar' else ('jar', 'aar')
+    paths = [artifact_path(g, art, v, k) for k in kinds]
+    for p in paths:
+        if (TOOLS / 'm2' / p).exists():
+            return TOOLS / 'm2' / p
+    for p in paths:
+        f = fetch(p)
+        if f:
+            return f
+    return None
 
 
 # ---------- manifest ----------
