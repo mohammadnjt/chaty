@@ -2538,6 +2538,44 @@ button.user-row:active {
 
 /* ---------- composer extras ---------- */
 
+/* Forward sheet: ticked chats, and what goes to them at the bottom. */
+.picked-row {
+  background: rgba(154, 107, 255, 0.1);
+}
+
+.forward-bar {
+  position: sticky;
+  bottom: calc(-18px - var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: calc(-18px - var(--safe-bottom));
+  padding: 12px 0 calc(14px + var(--safe-bottom));
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+.forward-bar .composer-context {
+  margin-bottom: 0;
+  border-radius: 16px;
+}
+
+.forward-go {
+  margin: 0 12px;
+}
+
+.forward-send {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.forward-send .field {
+  flex: 1;
+  min-width: 0;
+}
+
 .composer-context {
   display: flex;
   align-items: center;

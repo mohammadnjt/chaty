@@ -1,25 +1,30 @@
-import { FileText, Film, Send, X } from 'lucide-react';
+import { Check, FileText, Film, Forward, Send, SendHorizontal, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { errorText } from '../lib/api';
 import { formatBytes } from '../lib/format';
-import type { Conversation } from '../lib/types';
-import { activityOf, openSaved, peerOf, titleOf, useChat } from '../store/chat';
+import { navigate } from '../lib/router';
+import type { Message } from '../lib/types';
+import { activityOf, forwardWithComment, openSaved, peerOf, previewOf, setForwardDraft, titleOf, useChat } from '../store/chat';
 import { useConfig } from '../store/config';
 import { toast } from '../store/toast';
 import Avatar from './Avatar';
 
 // ---------- forward ----------
 
-export function ForwardSheet({
-  onClose,
-  onPick,
-}: {
-  onClose: () => void;
-  onPick: (conv: Conversation) => void;
-}) {
+const SAVED = -1; // Saved Messages before it's ever been opened: made when used
+
+/**
+ * Forwarding a message: tick one chat or several, nothing goes until you say.
+ * One chat opens it with the message waiting above the composer, like a
+ * reply; for several, add a comment here and send it to all of them.
+ */
+export function ForwardSheet({ msg, onClose }: { msg: Message; onClose: () => void }) {
   const me = useChat((s) => s.me);
   const conversations = useChat((s) => s.conversations);
   const [q, setQ] = useState('');
+  const [picked, setPicked] = useState<number[]>([]);
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
   const query = q.trim().toLowerCase();
   // Saved Messages first: forwarding there is how you save a message.
   const list = useMemo(
@@ -29,15 +34,55 @@ export function ForwardSheet({
         .sort((a, b) => Number(b.type === 'saved') - Number(a.type === 'saved') || activityOf(b) - activityOf(a)),
     [conversations, me, query],
   );
-  // Never opened yet: it's made when picked.
   const savedMissing = !Object.values(conversations).some((c) => c.type === 'saved') && 'saved messages'.includes(query);
-  async function pickSaved() {
+  const nameOfPick = (id: number) => (id === SAVED ? 'Saved Messages' : titleOf(conversations[id], me));
+
+  const toggle = (id: number) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const targets = () => Promise.all(picked.map((id) => (id === SAVED ? openSaved().then((c) => c.id) : id)));
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
     try {
-      onPick(await openSaved());
+      await fn();
+      onClose();
     } catch (e) {
       toast(errorText(e));
+      setBusy(false);
     }
   }
+
+  // One chat: open it with the message above the composer.
+  const openChat = () =>
+    run(async () => {
+      const [id] = await targets();
+      setForwardDraft(id, msg);
+      navigate(`/chat/${id}`);
+    });
+
+  // Several: send it (after the comment) to all of them now.
+  const sendAll = () =>
+    run(async () => {
+      const ids = await targets();
+      await forwardWithComment(msg, ids, comment);
+      toast(`Forwarded to ${ids.length} chats`);
+    });
+
+  const row = (id: number, title: string, sub: string, avatar: React.ReactNode) => {
+    const on = picked.includes(id);
+    return (
+      <button key={id} className={`user-row ${on ? 'picked-row' : ''}`} onClick={() => toggle(id)}>
+        {avatar}
+        <div className="user-row-body">
+          <span className="user-name" dir="auto">
+            {title}
+          </span>
+          <span className="user-sub">{sub}</span>
+        </div>
+        <span className={`check ${on ? 'on' : ''}`}>{on && <Check size={16} strokeWidth={3} />}</span>
+      </button>
+    );
+  };
+
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -50,38 +95,59 @@ export function ForwardSheet({
         </div>
         <div className="search-wrap">
           <label className="search">
-            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chats" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search chats" />
           </label>
         </div>
         <div className="sheet-list">
-          {savedMissing && (
-            <button className="user-row" onClick={() => void pickSaved()}>
-              <Avatar name="Saved Messages" saved size={44} />
-              <div className="user-row-body">
-                <span className="user-name">Saved Messages</span>
-                <span className="user-sub">Only you</span>
-              </div>
-            </button>
-          )}
+          {savedMissing && row(SAVED, 'Saved Messages', 'Only you', <Avatar name="Saved Messages" saved size={44} />)}
           {list.map((c) => {
             const peer = c.type === 'direct' ? peerOf(c, me) : null;
             const title = titleOf(c, me);
-            return (
-              <button key={c.id} className="user-row" onClick={() => onPick(c)}>
-                <Avatar name={title} src={peer ? peer.avatar : c.avatar} group={c.type === 'group'} saved={c.type === 'saved'} size={44} />
-                <div className="user-row-body">
-                  <span className="user-name" dir="auto">
-                    {title}
-                  </span>
-                  <span className="user-sub">
-                    {c.type === 'group' ? `${c.members.length} members` : c.type === 'saved' ? 'Only you' : 'Direct chat'}
-                  </span>
-                </div>
-              </button>
+            const sub = c.type === 'group' ? `${c.members.length} members` : c.type === 'saved' ? 'Only you' : 'Direct chat';
+            return row(
+              c.id,
+              title,
+              sub,
+              <Avatar name={title} src={peer ? peer.avatar : c.avatar} group={c.type === 'group'} saved={c.type === 'saved'} size={44} />,
             );
           })}
           {list.length === 0 && !savedMissing && <p className="muted pad">No chats found.</p>}
         </div>
+
+        {picked.length > 0 && (
+          <div className="forward-bar">
+            <div className="composer-context">
+              <Forward size={18} />
+              <div className="composer-context-text">
+                <span className="composer-context-title" dir="auto">
+                  {picked.length === 1 ? `Forward to ${nameOfPick(picked[0])}` : `Forward to ${picked.length} chats`}
+                </span>
+                <span className="composer-context-body" dir="auto">
+                  {previewOf(msg)}
+                </span>
+              </div>
+            </div>
+            {picked.length === 1 ? (
+              <button className="btn btn-primary forward-go" disabled={busy} onClick={() => void openChat()}>
+                Forward
+              </button>
+            ) : (
+              <div className="forward-send">
+                <input
+                  className="field"
+                  value={comment}
+                  dir="auto"
+                  placeholder="Add a comment…"
+                  onChange={(e) => setComment(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !busy && void sendAll()}
+                />
+                <button className="send-btn" disabled={busy} onClick={() => void sendAll()} aria-label={`Send to ${picked.length} chats`}>
+                  <SendHorizontal size={21} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

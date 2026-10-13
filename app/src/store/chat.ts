@@ -22,6 +22,7 @@ interface ChatState {
   presence: Record<number, Presence>;
   typing: Record<number, Record<number, { until: number; kind: string }>>; // conversation -> user
   activeId: number | null;
+  forwardDrafts: Record<number, Message>; // conversation -> a message waiting above its composer to be forwarded there
 }
 
 const initial: ChatState = {
@@ -33,6 +34,7 @@ const initial: ChatState = {
   presence: {},
   typing: {},
   activeId: null,
+  forwardDrafts: {},
 };
 
 export const useChat = create<ChatState>(() => initial);
@@ -479,6 +481,23 @@ export async function forwardMessage(msg: Message, conversationIds: number[]) {
   const sent = await api.forward(msg.id, conversationIds);
   sent.forEach(receiveMessage);
   return sent;
+}
+
+/** Forwards msg to the chats, each after the comment written with it (if any). */
+export async function forwardWithComment(msg: Message, conversationIds: number[], comment = '') {
+  const body = comment.trim();
+  if (body) for (const id of conversationIds) receiveMessage(await api.send(id, { type: 'text', body, clientId: uid() }));
+  return forwardMessage(msg, conversationIds);
+}
+
+/** Puts a message above a chat's composer, to forward when Send is pressed (null takes it away). */
+export function setForwardDraft(conversationId: number, msg: Message | null) {
+  set((s) => {
+    const forwardDrafts = { ...s.forwardDrafts };
+    if (msg) forwardDrafts[conversationId] = msg;
+    else delete forwardDrafts[conversationId];
+    return { forwardDrafts };
+  });
 }
 
 /** Your Saved Messages chat (made on first use). */

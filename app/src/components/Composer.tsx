@@ -1,9 +1,10 @@
-import { Mic, Paperclip, Pencil, Reply, SendHorizontal, Smile, Trash2, X } from 'lucide-react';
+import { Forward, Mic, Paperclip, Pencil, Reply, SendHorizontal, Smile, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { formatDuration } from '../lib/format';
 import { socket } from '../lib/socket';
 import type { Message } from '../lib/types';
-import { editMessage, previewOf, sendMessage } from '../store/chat';
+import { errorText } from '../lib/api';
+import { editMessage, forwardWithComment, previewOf, sendMessage } from '../store/chat';
 import { useConfig } from '../store/config';
 import { pauseVoice } from '../store/player';
 import { toast } from '../store/toast';
@@ -61,11 +62,13 @@ interface Props {
   replyTo: Message | null;
   replyName: string;
   editing: Message | null;
-  onDone: () => void; // clears reply / edit
+  forwarding: Message | null; // waiting to be forwarded here, with what's typed as a comment
+  forwardName: string; // who wrote it
+  onDone: () => void; // clears reply / edit / forward
   onFiles: (files: File[]) => void;
 }
 
-export default function Composer({ conversationId, replyTo, replyName, editing, onDone, onFiles }: Props) {
+export default function Composer({ conversationId, replyTo, replyName, editing, forwarding, forwardName, onDone, onFiles }: Props) {
   const f = useConfig((s) => s.features);
   const [text, setText] = useState('');
   const [emoji, setEmoji] = useState(false);
@@ -104,8 +107,8 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
   }, [editing]);
 
   useEffect(() => {
-    if (replyTo) input.current?.focus();
-  }, [replyTo]);
+    if ((replyTo || forwarding) && !coarsePointer) input.current?.focus();
+  }, [replyTo, forwarding]);
 
   useEffect(() => {
     const el = input.current;
@@ -143,6 +146,12 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
       if (body !== editing.body && (body || editing.type !== 'text')) void editMessage(editing, body);
       setText('');
       onDone();
+      return;
+    }
+    if (forwarding) {
+      setText('');
+      onDone();
+      forwardWithComment(forwarding, [conversationId], body).catch((e) => toast(errorText(e)));
       return;
     }
     if (!body) return;
@@ -270,20 +279,22 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
 
   const hasText = text.trim().length > 0;
   const canAttach = f.photos || f.files;
-  const showMic = !hasText && !editing && f.voiceMessages;
+  const showMic = !hasText && !editing && !forwarding && f.voiceMessages;
 
   return (
     <div className="composer-wrap">
       {emoji && !recording && (
         <EmojiPicker onPick={insertEmoji} />
       )}
-      {(replyTo || editing) && !recording && (
+      {(replyTo || editing || forwarding) && !recording && (
         <div className="composer-context">
-          {editing ? <Pencil size={18} /> : <Reply size={18} />}
+          {editing ? <Pencil size={18} /> : forwarding ? <Forward size={18} /> : <Reply size={18} />}
           <div className="composer-context-text">
-            <span className="composer-context-title">{editing ? 'Edit message' : `Reply to ${replyName}`}</span>
+            <span className="composer-context-title" dir="auto">
+              {editing ? 'Edit message' : forwarding ? `Forward from ${forwardName}` : `Reply to ${replyName}`}
+            </span>
             <span className="composer-context-body" dir="auto">
-              {previewOf(editing ?? replyTo)}
+              {previewOf(editing ?? forwarding ?? replyTo)}
             </span>
           </div>
           <button
@@ -318,7 +329,7 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
               rows={1}
               dir="auto"
               value={text}
-              placeholder={editing ? 'Edit message…' : 'Type a message...'}
+              placeholder={editing ? 'Edit message…' : forwarding ? 'Add a comment…' : 'Type a message...'}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               onPaste={onPaste}
@@ -341,7 +352,7 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
         )}
         <button
           className="send-btn"
-          disabled={!recording && !hasText && !showMic && !editing}
+          disabled={!recording && !hasText && !showMic && !editing && !forwarding}
           onClick={() => (recording ? stopRecording(true) : showMic ? startRecording() : submit())}
           aria-label={recording || !showMic ? 'Send' : 'Record voice message'}
         >

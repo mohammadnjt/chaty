@@ -12,14 +12,13 @@ import { AttachSheet, ForwardSheet, type Pick } from '../components/Sheets';
 import { api, errorText } from '../lib/api';
 import { formatDay, formatLastSeen, sameDay } from '../lib/format';
 import { fileNameFor, shrinkImage } from '../lib/media';
-import { goBack, navigate } from '../lib/router';
+import { goBack } from '../lib/router';
 import type { Conversation, Message, User } from '../lib/types';
 import { appVisible, onAppVisibility } from '../lib/visibility';
 import { useAuth } from '../store/auth';
 import {
   deleteMessage,
   ensureConversation,
-  forwardMessage,
   isGroupAdmin,
   loadMessages,
   loadOlder,
@@ -33,6 +32,7 @@ import {
   retryMessage,
   sendMessage,
   setBlocked,
+  setForwardDraft,
   setMuted,
   titleOf,
   useChat,
@@ -208,6 +208,7 @@ export default function ChatScreen({ id }: { id: number }) {
   const presence = useChat((s) => s.presence);
   const typingMap = useChat((s) => s.typing[id]);
   const groupRoom = useGroupCall((s) => s.rooms[id]);
+  const forwardDraft = useChat((s) => s.forwardDrafts[id]);
   const inGroupCall = useGroupCall((s) => s.conversationId === id);
   const f = useConfig((s) => s.features);
   const [missing, setMissing] = useState(false);
@@ -337,10 +338,21 @@ export default function ChatScreen({ id }: { id: number }) {
   }, [id, me, f.editMessages]);
 
   const onMenu = useCallback((msg: Message, el: HTMLElement) => setMenu({ msg, rect: el.getBoundingClientRect() }), []);
-  const onReply = useCallback((msg: Message) => {
+  const onReply = useCallback(
+    (msg: Message) => {
+      setEditing(null);
+      setForwardDraft(id, null);
+      setReplyTo(msg);
+    },
+    [id],
+  );
+
+  // A message to forward here takes the place of a reply or an edit.
+  useEffect(() => {
+    if (!forwardDraft) return;
+    setReplyTo(null);
     setEditing(null);
-    setReplyTo(msg);
-  }, []);
+  }, [forwardDraft]);
   const onReact = useCallback((msg: Message, emoji: string) => void reactTo(msg, emoji), []);
   const onRetry = useCallback((msg: Message) => msg.clientId && retryMessage(id, msg.clientId), [id]);
 
@@ -596,9 +608,12 @@ export default function ChatScreen({ id }: { id: number }) {
         replyTo={replyTo}
         replyName={replyTo ? nameOf(replyTo.senderId, conv) : ''}
         editing={editing}
+        forwarding={forwardDraft ?? null}
+        forwardName={forwardDraft ? forwardDraft.forwardedFrom || nameOf(forwardDraft.senderId, useChat.getState().conversations[forwardDraft.conversationId]) : ''}
         onDone={() => {
           setReplyTo(null);
           setEditing(null);
+          setForwardDraft(id, null);
         }}
         onFiles={setAttach}
       />
@@ -639,26 +654,7 @@ export default function ChatScreen({ id }: { id: number }) {
           onRetry={() => onRetry(menu.msg)}
         />
       )}
-      {forwarding && (
-        <ForwardSheet
-          onClose={() => setForwarding(null)}
-          onPick={async (c) => {
-            const msg = forwarding;
-            setForwarding(null);
-            try {
-              await forwardMessage(msg, [c.id]);
-              // Forwarding to Saved Messages is how you save one: stay here.
-              if (c.type === 'saved') toast('Saved to Saved Messages');
-              else {
-                toast('Forwarded');
-                if (c.id !== id) navigate(`/chat/${c.id}`);
-              }
-            } catch (e) {
-              toast(errorText(e));
-            }
-          }}
-        />
-      )}
+      {forwarding && <ForwardSheet msg={forwarding} onClose={() => setForwarding(null)} />}
       {attach && <AttachSheet files={attach} onClose={() => setAttach(null)} onSend={sendPicks} />}
       {info && conv && <InfoSheet conv={conv} me={me} onClose={() => setInfo(false)} />}
     </div>
