@@ -14,13 +14,24 @@
     <meta name="apple-mobile-web-app-title" content="Chaty" />
     <title>Chaty</title>
     <script>
-      // Day or night before the first paint (see src/lib/theme.ts).
+      // Day or night and the colour palette, before the first paint (see
+      // src/lib/theme.ts, whose PALETTES has the same bar colours).
       try {
         var t = localStorage.getItem('chaty.theme');
-        if (t === 'light' || (t === 'system' && matchMedia('(prefers-color-scheme: light)').matches)) {
-          document.documentElement.dataset.theme = 'light';
-          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#3b8fe8');
-        }
+        var light = t === 'light' || (t === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+        var bars = {
+          twilight: ['#0a0e24', '#3b8fe8'],
+          ocean: ['#021220', '#0c86dc'],
+          forest: ['#021512', '#3189da'],
+          sunset: ['#1c0a08', '#2c83d4'],
+          sakura: ['#1c0914', '#5d93e2'],
+          graphite: ['#07090c', '#8092a6'],
+        };
+        var p = localStorage.getItem('chaty.palette');
+        if (!Object.prototype.hasOwnProperty.call(bars, p)) p = 'twilight';
+        document.documentElement.dataset.palette = p;
+        if (light) document.documentElement.dataset.theme = 'light';
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', bars[p][light ? 1 : 0]);
       } catch (e) {}
     </script>
   </head>

@@ -1,24 +1,267 @@
-:root {
-  --bg: #0a0e24;
-  --bg-2: #0e1330;
-  --panel: #121838;
-  --panel-2: #181f45;
-  --glass: rgba(14, 19, 48, 0.72);
-  --line: rgb(var(--ink) / 0.07);
-  --text: #f4f3ff;
-  --text-2: #a9acd2;
-  --text-3: #7175a6;
-  --accent: #9a6bff;
-  --accent-2: #b597ff;
-  --bubble-in: rgba(13, 17, 42, 0.9);
-  /* rgb triplets, used as rgb(var(--ink) / 0.1) */
-  --ink: 255 255 255; /* faint fills and borders on top of surfaces */
-  --surface-1: 10 13 34; /* bars, fields */
-  --surface-2: 14 18 46; /* panels, composer */
-  --surface-3: 24 30 68; /* cards, menus */
-  color-scheme: dark;
+/* ---------- colour themes ----------
+   Every palette (data-palette, set by src/lib/theme.ts) gives a night set
+   (--n-*), a day set (--d-*) and accent colours shared by both; night or day
+   (data-theme) then picks which set the app uses. Twilight is the default.
+   Palettes are plain attribute selectors so a preview card in Settings can
+   wear a palette other than the current one. Add one here, in SCENES
+   (src/components/Scenery.tsx) and in PALETTES (src/lib/theme.ts). */
+:root,
+[data-palette='twilight'] {
+  --n-bg: #0a0e24;
+  --n-bg-2: #0e1330;
+  --n-panel: #121838;
+  --n-panel-2: #181f45;
+  --n-glass: rgba(14, 19, 48, 0.72);
+  --n-text: #f4f3ff;
+  --n-text-2: #a9acd2;
+  --n-text-3: #7175a6;
+  --n-accent: #9a6bff;
+  --n-accent-2: #b597ff;
+  --n-bubble-in: rgba(13, 17, 42, 0.9);
+  --n-surface-1: 10 13 34;
+  --n-surface-2: 14 18 46;
+  --n-surface-3: 24 30 68;
+  --n-page:
+    radial-gradient(ellipse at 70% 110%, rgba(240, 140, 140, 0.25), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(120, 90, 220, 0.25), transparent 60%), #070a1c;
+  --d-bg: #eef4fb;
+  --d-bg-2: #e6eef9;
+  --d-panel-2: #f3f7fd;
+  --d-line: rgba(25, 45, 100, 0.1);
+  --d-text: #15193b;
+  --d-text-2: #4b5582;
+  --d-text-3: #7c85ab;
+  --d-accent: #8a5cf6;
+  --d-accent-2: #7a4be6;
+  --d-ink: 28 40 92;
+  --d-page:
+    radial-gradient(ellipse at 70% 110%, rgba(120, 190, 255, 0.35), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(160, 130, 255, 0.18), transparent 60%), #dce8f6;
+  /* rgb triplets, used as rgb(var(--accent-rgb) / 0.2) */
+  --accent-rgb: 154 107 255;
+  --accent-2-rgb: 181 151 255;
+  --accent-deep-rgb: 138 92 246;
   --accent-grad: linear-gradient(135deg, #a77bff 0%, #8a5cf6 55%, #7448ea 100%);
   --bubble-out: linear-gradient(135deg, #8f66fb 0%, #7a54ee 100%);
+  --bubble-tail: #7a54ee; /* the end colour of --bubble-out */
+  --story-grad: linear-gradient(135deg, #c4a5ff, #8a5cf6 50%, #ec4899);
+  --wave-grad: linear-gradient(#f0abfc, #a77bff 50%, #6d6bff);
+}
+
+/* Ocean: deep navy night over a teal moonrise; a tropical lagoon by day. */
+[data-palette='ocean'] {
+  --n-bg: #021220;
+  --n-bg-2: #01182b;
+  --n-panel: #021d32;
+  --n-panel-2: #03253e;
+  --n-glass: rgba(1, 24, 43, 0.72);
+  --n-text: #edf6fd;
+  --n-text-2: #98b3cb;
+  --n-text-3: #597e9e;
+  --n-accent: #3d9eff;
+  --n-accent-2: #7cc0ff;
+  --n-bubble-in: rgba(2, 21, 38, 0.9);
+  --n-surface-1: 2 17 30;
+  --n-surface-2: 1 23 41;
+  --n-surface-3: 2 36 61;
+  --n-page:
+    radial-gradient(ellipse at 70% 110%, rgba(80, 190, 210, 0.22), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(40, 110, 220, 0.25), transparent 60%), #020d19;
+  --d-bg: #eef4fa;
+  --d-bg-2: #e6eff7;
+  --d-panel-2: #f3f7fc;
+  --d-line: rgba(0, 52, 90, 0.1);
+  --d-text: #021f35;
+  --d-text-2: #395c7a;
+  --d-text-3: #6e8ba4;
+  --d-accent: #1a78dc;
+  --d-accent-2: #1462b8;
+  --d-ink: 0 48 82;
+  --d-page:
+    radial-gradient(ellipse at 70% 110%, rgba(80, 210, 230, 0.35), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(60, 150, 255, 0.18), transparent 60%), #dce8f3;
+  --accent-rgb: 61 158 255;
+  --accent-2-rgb: 124 192 255;
+  --accent-deep-rgb: 35 128 232;
+  --accent-grad: linear-gradient(135deg, #3a9cf6 0%, #2380e8 55%, #1a68d0 100%);
+  --bubble-out: linear-gradient(135deg, #3592f5 0%, #1f72e0 100%);
+  --bubble-tail: #1f72e0;
+  --story-grad: linear-gradient(135deg, #8fd8ff, #2380e8 50%, #22d3ee);
+  --wave-grad: linear-gradient(#a5f3fc, #3a9cf6 50%, #3b5bff);
+}
+
+/* Forest: a green glow over dark pines at night; spring woods by day. */
+[data-palette='forest'] {
+  --n-bg: #021512;
+  --n-bg-2: #031c18;
+  --n-panel: #04221d;
+  --n-panel-2: #052b25;
+  --n-glass: rgba(3, 28, 24, 0.72);
+  --n-text: #edf7f5;
+  --n-text-2: #96b8b1;
+  --n-text-3: #56847c;
+  --n-accent: #2fc48a;
+  --n-accent-2: #7ee0b4;
+  --n-bubble-in: rgba(2, 25, 21, 0.9);
+  --n-surface-1: 2 20 16;
+  --n-surface-2: 3 27 23;
+  --n-surface-3: 5 42 36;
+  --n-page:
+    radial-gradient(ellipse at 70% 110%, rgba(110, 200, 140, 0.2), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(20, 120, 110, 0.25), transparent 60%), #020f0d;
+  --d-bg: #eef5f4;
+  --d-bg-2: #e5f0ee;
+  --d-panel-2: #f2f8f7;
+  --d-line: rgba(0, 61, 52, 0.1);
+  --d-text: #00241f;
+  --d-text-2: #34625a;
+  --d-text-3: #6c9089;
+  --d-accent: #0f8a59;
+  --d-accent-2: #0b7049;
+  --d-ink: 0 56 48;
+  --d-page:
+    radial-gradient(ellipse at 70% 110%, rgba(140, 220, 170, 0.35), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(90, 170, 230, 0.18), transparent 60%), #dceae7;
+  --accent-rgb: 47 196 138;
+  --accent-2-rgb: 126 224 180;
+  --accent-deep-rgb: 21 138 96;
+  --accent-grad: linear-gradient(135deg, #22a874 0%, #158a60 55%, #0e7352 100%);
+  --bubble-out: linear-gradient(135deg, #1c9e6c 0%, #0f8059 100%);
+  --bubble-tail: #0f8059;
+  --story-grad: linear-gradient(135deg, #bef264, #158a60 50%, #14b8a6);
+  --wave-grad: linear-gradient(#d9f99d, #2fc48a 50%, #0d9488);
+}
+
+/* Sunset: an ember dusk at night; a golden autumn afternoon by day. */
+[data-palette='sunset'] {
+  --n-bg: #1c0a08;
+  --n-bg-2: #260e0c;
+  --n-panel: #2d1310;
+  --n-panel-2: #381915;
+  --n-glass: rgba(38, 14, 12, 0.72);
+  --n-text: #fcf2f0;
+  --n-text-2: #c7a7a2;
+  --n-text-3: #976e69;
+  --n-accent: #ff8a4c;
+  --n-accent-2: #ffb489;
+  --n-bubble-in: rgba(33, 13, 11, 0.9);
+  --n-surface-1: 27 10 8;
+  --n-surface-2: 36 14 11;
+  --n-surface-3: 55 24 20;
+  --n-page:
+    radial-gradient(ellipse at 70% 110%, rgba(250, 140, 80, 0.25), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(170, 50, 90, 0.25), transparent 60%), #160706;
+  --d-bg: #f9f1f0;
+  --d-bg-2: #f5eae9;
+  --d-panel-2: #fbf5f4;
+  --d-line: rgba(80, 34, 29, 0.1);
+  --d-text: #2f1411;
+  --d-text-2: #734d48;
+  --d-text-3: #9f7e7a;
+  --d-accent: #d9581a;
+  --d-accent-2: #b84610;
+  --d-ink: 73 31 26;
+  --d-page:
+    radial-gradient(ellipse at 70% 110%, rgba(255, 200, 140, 0.4), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(240, 120, 90, 0.15), transparent 60%), #f1e3e1;
+  --accent-rgb: 255 138 76;
+  --accent-2-rgb: 255 180 137;
+  --accent-deep-rgb: 226 98 42;
+  --accent-grad: linear-gradient(135deg, #f5843f 0%, #e2622a 55%, #c94c1f 100%);
+  --bubble-out: linear-gradient(135deg, #ec7436 0%, #d1532a 100%);
+  --bubble-tail: #d1532a;
+  --story-grad: linear-gradient(135deg, #fcd34d, #e2622a 50%, #ec4899);
+  --wave-grad: linear-gradient(#fde68a, #ff8a4c 50%, #e11d48);
+}
+
+/* Sakura: a plum night sky; cherry blossom hills by day. */
+[data-palette='sakura'] {
+  --n-bg: #1c0914;
+  --n-bg-2: #250c1b;
+  --n-panel: #2c1021;
+  --n-panel-2: #37162a;
+  --n-glass: rgba(37, 12, 27, 0.72);
+  --n-text: #fcf1f7;
+  --n-text-2: #c6a4b6;
+  --n-text-3: #966b83;
+  --n-accent: #ff6fae;
+  --n-accent-2: #ffa3cb;
+  --n-bubble-in: rgba(33, 11, 24, 0.9);
+  --n-surface-1: 26 8 19;
+  --n-surface-2: 36 11 26;
+  --n-surface-3: 54 21 41;
+  --n-page:
+    radial-gradient(ellipse at 70% 110%, rgba(250, 130, 180, 0.25), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(150, 60, 170, 0.25), transparent 60%), #15060f;
+  --d-bg: #f8f1f5;
+  --d-bg-2: #f5eaef;
+  --d-panel-2: #fbf5f8;
+  --d-line: rgba(78, 29, 59, 0.1);
+  --d-text: #2f1123;
+  --d-text-2: #724a60;
+  --d-text-3: #9e7c8e;
+  --d-accent: #d63a80;
+  --d-accent-2: #b82a68;
+  --d-ink: 72 26 55;
+  --d-page:
+    radial-gradient(ellipse at 70% 110%, rgba(255, 170, 210, 0.35), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(170, 150, 255, 0.18), transparent 60%), #f1e2e9;
+  --accent-rgb: 255 111 174;
+  --accent-2-rgb: 255 163 203;
+  --accent-deep-rgb: 228 71 138;
+  --accent-grad: linear-gradient(135deg, #f7629f 0%, #e4478a 55%, #c93576 100%);
+  --bubble-out: linear-gradient(135deg, #ec5596 0%, #cf3a7a 100%);
+  --bubble-tail: #cf3a7a;
+  --story-grad: linear-gradient(135deg, #fbcfe8, #e4478a 50%, #a855f7);
+  --wave-grad: linear-gradient(#fbcfe8, #ff6fae 50%, #c026d3);
+}
+
+/* Graphite: near-black and silver (easy on OLED screens); a misty day. */
+[data-palette='graphite'] {
+  --n-bg: #07090c;
+  --n-bg-2: #0b0e11;
+  --n-panel: #0f1215;
+  --n-panel-2: #14171c;
+  --n-glass: rgba(11, 14, 17, 0.75);
+  --n-text: #f3f5f6;
+  --n-text-2: #acb0b5;
+  --n-text-3: #757a81;
+  --n-accent: #94a8c8;
+  --n-accent-2: #c0cde0;
+  --n-bubble-in: rgba(16, 19, 23, 0.92);
+  --n-surface-1: 7 8 11;
+  --n-surface-2: 12 15 18;
+  --n-surface-3: 24 28 33;
+  --n-page:
+    radial-gradient(ellipse at 70% 110%, rgba(150, 160, 175, 0.12), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(90, 105, 130, 0.15), transparent 60%), #050608;
+  --d-bg: #f2f3f4;
+  --d-bg-2: #ecedef;
+  --d-panel-2: #f6f7f8;
+  --d-line: rgba(45, 50, 57, 0.1);
+  --d-text: #1a1d22;
+  --d-text-2: #54595f;
+  --d-text-3: #84878c;
+  --d-accent: #4d6080;
+  --d-accent-2: #3c4c66;
+  --d-ink: 41 46 53;
+  --d-page:
+    radial-gradient(ellipse at 70% 110%, rgba(170, 185, 200, 0.35), transparent 55%),
+    radial-gradient(ellipse at 20% 0%, rgba(140, 150, 170, 0.15), transparent 60%), #e5e7e9;
+  --accent-rgb: 148 168 200;
+  --accent-2-rgb: 192 205 224;
+  --accent-deep-rgb: 90 109 140;
+  --accent-grad: linear-gradient(135deg, #7186a8 0%, #5a6d8c 55%, #48597a 100%);
+  --bubble-out: linear-gradient(135deg, #5c6e8c 0%, #46566f 100%);
+  --bubble-tail: #46566f;
+  --story-grad: linear-gradient(135deg, #f1f5f9, #7186a8 50%, #475569);
+  --wave-grad: linear-gradient(#f1f5f9, #94a3b8 50%, #64748b);
+}
+
+:root {
+  --bg: var(--n-bg);
+  --bg-2: var(--n-bg-2);
+  --page: var(--n-page);
   --danger: #f2465a;
   --ok: #34d399;
   --radius: 20px;
@@ -27,49 +270,55 @@
   --font: 'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Vazirmatn', Tahoma, sans-serif;
 }
 
-/* Light theme: a sunny day (src/lib/theme.ts sets data-theme). */
+/* Night, and the places that are always on a dark backdrop in the day theme
+   (the sky, calls, photos, stories). */
+:root,
+:root[data-theme='light'] :is(.hero, .auth, .splash, .call-screen, .story-screen, .viewer, .msg-media-meta, .progress-ring) {
+  --panel: var(--n-panel);
+  --panel-2: var(--n-panel-2);
+  --glass: var(--n-glass);
+  --line: rgb(var(--ink) / 0.07);
+  --text: var(--n-text);
+  --text-2: var(--n-text-2);
+  --text-3: var(--n-text-3);
+  --accent: var(--n-accent);
+  --accent-2: var(--n-accent-2);
+  --bubble-in: var(--n-bubble-in);
+  /* rgb triplets, used as rgb(var(--ink) / 0.1) */
+  --ink: 255 255 255; /* faint fills and borders on top of surfaces */
+  --surface-1: var(--n-surface-1); /* bars, fields */
+  --surface-2: var(--n-surface-2); /* panels, composer */
+  --surface-3: var(--n-surface-3); /* cards, menus */
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] :is(.hero, .auth, .splash, .call-screen, .story-screen, .viewer, .msg-media-meta, .progress-ring) {
+  color: var(--text);
+}
+
+/* Day (src/lib/theme.ts sets data-theme). */
 :root[data-theme='light'] {
-  --bg: #eef4fb;
-  --bg-2: #e6eef9;
+  --bg: var(--d-bg);
+  --bg-2: var(--d-bg-2);
+  --page: var(--d-page);
   --panel: #ffffff;
-  --panel-2: #f3f7fd;
+  --panel-2: var(--d-panel-2);
   --glass: rgb(var(--ink) / 0.8);
-  --line: rgba(25, 45, 100, 0.1);
-  --text: #15193b;
-  --text-2: #4b5582;
-  --text-3: #7c85ab;
-  --accent: #8a5cf6;
-  --accent-2: #7a4be6;
+  --line: var(--d-line);
+  --text: var(--d-text);
+  --text-2: var(--d-text-2);
+  --text-3: var(--d-text-3);
+  --accent: var(--d-accent);
+  --accent-2: var(--d-accent-2);
   --bubble-in: #ffffff;
-  --ink: 28 40 92;
+  --ink: var(--d-ink);
   --surface-1: 255 255 255;
   --surface-2: 255 255 255;
   --surface-3: 255 255 255;
   color-scheme: light;
 }
 
-/* Always on a dark backdrop (the sky, calls, photos, stories): keep night colours. */
-:root[data-theme='light'] :is(.hero, .auth, .splash, .call-screen, .story-screen, .viewer, .msg-media-meta, .progress-ring) {
-  --panel: #121838;
-  --panel-2: #181f45;
-  --glass: rgba(14, 19, 48, 0.72);
-  --line: rgb(var(--ink) / 0.07);
-  --text: #f4f3ff;
-  --text-2: #a9acd2;
-  --text-3: #7175a6;
-  --accent: #9a6bff;
-  --accent-2: #b597ff;
-  --bubble-in: rgba(13, 17, 42, 0.9);
-  /* rgb triplets, used as rgb(var(--ink) / 0.1) */
-  --ink: 255 255 255; /* faint fills and borders on top of surfaces */
-  --surface-1: 10 13 34; /* bars, fields */
-  --surface-2: 14 18 46; /* panels, composer */
-  --surface-3: 24 30 68; /* cards, menus */
-  color-scheme: dark;
-  color: var(--text);
-}
-
-/* Outgoing bubbles are purple in both themes. */
+/* Outgoing bubbles keep the palette's colour in both themes. */
 .bubble-out {
   --ink: 255 255 255;
 }
@@ -87,10 +336,7 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(ellipse at 70% 110%, rgba(240, 140, 140, 0.25), transparent 55%),
-    radial-gradient(ellipse at 20% 0%, rgba(120, 90, 220, 0.25), transparent 60%),
-    #070a1c;
+  background: var(--page);
   color: var(--text);
   font-family: var(--font);
   font-size: 15px;
@@ -320,11 +566,11 @@ svg {
 
 @keyframes update-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(167, 123, 255, 0.6);
+    box-shadow: 0 0 0 0 rgb(var(--accent-rgb) / 0.6);
   }
   70%,
   100% {
-    box-shadow: 0 0 0 10px rgba(167, 123, 255, 0);
+    box-shadow: 0 0 0 10px rgb(var(--accent-rgb) / 0);
   }
 }
 
@@ -351,7 +597,7 @@ svg {
   left: 18px;
   width: 10px;
   height: 10px;
-  background: #9a6bff;
+  background: var(--n-accent);
   transform: rotate(45deg);
   border-radius: 2px;
 }
@@ -596,7 +842,7 @@ button.user-row:active {
 .avatar-ring > .avatar-fallback {
   box-shadow:
     0 0 0 2px rgb(var(--surface-1) / 1),
-    0 0 0 3.5px rgba(181, 151, 255, 0.35);
+    0 0 0 3.5px rgb(var(--accent-2-rgb) / 0.35);
 }
 
 .avatar-dot {
@@ -649,7 +895,7 @@ button.user-row:active {
 }
 
 .tab-on .tab-icon {
-  background: rgba(154, 107, 255, 0.22);
+  background: rgb(var(--accent-rgb) / 0.22);
   color: #c9b2ff;
 }
 
@@ -703,7 +949,7 @@ button.user-row:active {
 .btn-primary {
   background: var(--accent-grad);
   color: #fff;
-  box-shadow: 0 8px 24px rgba(138, 92, 246, 0.35);
+  box-shadow: 0 8px 24px rgb(var(--accent-deep-rgb) / 0.35);
 }
 
 .btn-ghost {
@@ -730,7 +976,7 @@ button.user-row:active {
 }
 
 .field:focus {
-  border-color: rgba(181, 151, 255, 0.6);
+  border-color: rgb(var(--accent-2-rgb) / 0.6);
 }
 
 .field::placeholder {
@@ -821,7 +1067,7 @@ button.user-row:active {
 }
 
 .chip.on {
-  background: rgba(154, 107, 255, 0.25);
+  background: rgb(var(--accent-rgb) / 0.25);
   color: #e3d8ff;
 }
 
@@ -1004,7 +1250,7 @@ button.user-row:active {
   gap: 6px;
   padding: 4px 10px 4px 4px;
   border-radius: 16px;
-  background: rgba(154, 107, 255, 0.2);
+  background: rgb(var(--accent-rgb) / 0.2);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -1107,7 +1353,7 @@ button.user-row:active {
 }
 
 .msg-row.flash {
-  background: rgba(154, 107, 255, 0.22);
+  background: rgb(var(--accent-rgb) / 0.22);
 }
 
 .msg-row.tail {
@@ -1186,7 +1432,7 @@ button.user-row:active {
 
 .msg-row.out.tail .bubble::before {
   right: -6px;
-  background: radial-gradient(circle at 100% 0, transparent 9px, #7a54ee 9.5px);
+  background: radial-gradient(circle at 100% 0, transparent 9px, var(--bubble-tail) 9.5px);
 }
 
 .msg-sender {
@@ -1539,7 +1785,7 @@ button.user-row:active {
   background: var(--accent-grad);
   color: #fff;
   flex-shrink: 0;
-  box-shadow: 0 8px 22px rgba(138, 92, 246, 0.45);
+  box-shadow: 0 8px 22px rgb(var(--accent-deep-rgb) / 0.45);
   transition: transform 0.1s;
 }
 
@@ -1683,7 +1929,7 @@ button.user-row:active {
   width: 92px;
   padding: 12px 0;
   border-radius: 16px;
-  background: rgba(154, 107, 255, 0.14);
+  background: rgb(var(--accent-rgb) / 0.14);
   color: var(--accent-2);
   font-size: 13px;
 }
@@ -1698,7 +1944,7 @@ button.user-row:active {
   z-index: 70;
   overflow: hidden;
   pointer-events: none;
-  background: rgba(154, 107, 255, 0.22);
+  background: rgb(var(--accent-rgb) / 0.22);
 }
 .conn-bar::before {
   content: '';
@@ -1841,7 +2087,7 @@ button.user-row:active {
 }
 
 .segmented button.on {
-  background: rgba(154, 107, 255, 0.3);
+  background: rgb(var(--accent-rgb) / 0.3);
   color: #fff;
 }
 
@@ -1999,7 +2245,7 @@ button.user-row:active {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: spin 3s linear infinite;
-  filter: drop-shadow(0 0 10px rgba(167, 123, 255, 0.8));
+  filter: drop-shadow(0 0 10px rgb(var(--accent-rgb) / 0.8));
 }
 
 .call-avatar.live::before {
@@ -2011,7 +2257,7 @@ button.user-row:active {
   position: absolute;
   inset: -14px;
   border-radius: 50%;
-  border: 1.5px solid rgba(181, 151, 255, 0.35);
+  border: 1.5px solid rgb(var(--accent-2-rgb) / 0.35);
   animation: ripple 2.2s ease-out infinite;
 }
 
@@ -2048,7 +2294,7 @@ button.user-row:active {
   width: 4px;
   height: 100%;
   border-radius: 3px;
-  background: linear-gradient(#f0abfc, #a77bff 50%, #6d6bff);
+  background: var(--wave-grad);
   transform: scaleY(0.15);
   transition: transform 0.08s linear;
 }
@@ -2266,7 +2512,7 @@ button.user-row:active {
   padding: 5px 10px;
   border-left: 3px solid var(--accent-2);
   border-radius: 6px 10px 10px 6px;
-  background: rgba(154, 107, 255, 0.14);
+  background: rgb(var(--accent-rgb) / 0.14);
   text-align: left;
   font-size: 13.5px;
 }
@@ -2440,7 +2686,7 @@ button.user-row:active {
 }
 
 .reaction.mine {
-  background: rgba(154, 107, 255, 0.45);
+  background: rgb(var(--accent-rgb) / 0.45);
   border-color: rgba(200, 180, 255, 0.6);
 }
 
@@ -2459,7 +2705,7 @@ button.user-row:active {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: rgba(154, 107, 255, 0.35);
+  background: rgb(var(--accent-rgb) / 0.35);
 }
 
 /* ---------- message menu ---------- */
@@ -2540,7 +2786,7 @@ button.user-row:active {
 
 /* Forward sheet: ticked chats, and what goes to them at the bottom. */
 .picked-row {
-  background: rgba(154, 107, 255, 0.1);
+  background: rgb(var(--accent-rgb) / 0.1);
 }
 
 .forward-bar {
@@ -2755,7 +3001,7 @@ button.user-row:active {
   flex-shrink: 0;
   padding: 3px 8px;
   border-radius: 8px;
-  background: rgba(154, 107, 255, 0.18);
+  background: rgb(var(--accent-rgb) / 0.18);
   color: var(--accent-2);
   font-size: 11.5px;
   font-weight: 600;
@@ -2857,7 +3103,7 @@ button.user-row:active {
   gap: 12px;
   margin: 10px;
   border-radius: 24px;
-  border: 2px dashed rgba(181, 151, 255, 0.7);
+  border: 2px dashed rgb(var(--accent-2-rgb) / 0.7);
   background: rgb(var(--surface-1) / 0.85);
   color: var(--accent-2);
   font-weight: 600;
@@ -3020,7 +3266,7 @@ button.user-row:active {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: rgba(154, 107, 255, 0.2);
+  background: rgb(var(--accent-rgb) / 0.2);
   color: var(--accent-2);
 }
 
@@ -3069,7 +3315,7 @@ button.user-row:active {
 }
 
 .tab-pill.on {
-  background: rgba(154, 107, 255, 0.28);
+  background: rgb(var(--accent-rgb) / 0.28);
   color: #fff;
 }
 
@@ -3155,7 +3401,7 @@ button.user-row:active {
 }
 
 .accent-tag {
-  background: rgba(154, 107, 255, 0.3);
+  background: rgb(var(--accent-rgb) / 0.3);
   color: #e2d6ff;
 }
 
@@ -3302,7 +3548,7 @@ code {
   margin-left: 6px;
   padding: 0 6px;
   border-radius: 6px;
-  background: rgba(154, 107, 255, 0.3);
+  background: rgb(var(--accent-rgb) / 0.3);
   font-size: 11px;
   color: #e2d6ff;
 }
@@ -3435,7 +3681,7 @@ code {
   flex: none;
   padding: 2.5px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #c4a5ff, #8a5cf6 50%, #ec4899);
+  background: var(--story-grad);
 }
 .story-ring .avatar {
   box-shadow: 0 0 0 2.5px rgb(var(--surface-3));
@@ -3445,7 +3691,7 @@ code {
 }
 .story-ring.empty {
   background: transparent;
-  outline: 2px dashed rgba(181, 151, 255, 0.55);
+  outline: 2px dashed rgb(var(--accent-2-rgb) / 0.55);
   outline-offset: -1px;
 }
 
@@ -3616,7 +3862,7 @@ code {
   inset: -5px;
   z-index: -1;
   border-radius: 50%;
-  background: linear-gradient(135deg, #c4a5ff, #8a5cf6 50%, #ec4899);
+  background: var(--story-grad);
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
   mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
 }
@@ -3653,17 +3899,102 @@ code {
 .theme-option.on {
   color: var(--accent-2);
   border-color: var(--accent);
-  background: rgba(154, 107, 255, 0.12);
+  background: rgb(var(--accent-rgb) / 0.12);
+}
+
+/* ---------- colour palettes (settings) ---------- */
+/* Each option carries data-palette, so its preview shows that palette's
+   bubbles even while another one is in use. */
+.palette-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.palette-option {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 5px 9px;
+  border-radius: 16px;
+  color: var(--text-2);
+  background: rgb(var(--ink) / 0.04);
+  border: 1.5px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.palette-option.on {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgb(var(--accent-rgb) / 0.12);
+}
+
+.palette-preview {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.palette-scene {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.palette-bubble {
+  position: absolute;
+  height: 10px;
+  border-radius: 6px;
+}
+
+.palette-bubble.in {
+  top: 50%;
+  left: 7px;
+  width: 44%;
+  background: rgb(var(--n-surface-2) / 0.92);
+}
+
+.palette-bubble.out {
+  right: 7px;
+  bottom: 9px;
+  width: 52%;
+  background: var(--bubble-out);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.25);
+}
+
+:root[data-theme='light'] .palette-bubble.in {
+  background: #fff;
+}
+
+.palette-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--accent-grad);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.3);
+}
+
+.palette-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- light theme touches ---------- */
-:root[data-theme='light'] body {
-  background:
-    radial-gradient(ellipse at 70% 110%, rgba(120, 190, 255, 0.35), transparent 55%),
-    radial-gradient(ellipse at 20% 0%, rgba(160, 130, 255, 0.18), transparent 60%),
-    #dce8f6;
-}
-
 [data-theme='light'] .app {
   box-shadow:
     0 0 0 1px rgba(25, 45, 100, 0.08),

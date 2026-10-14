@@ -1,9 +1,10 @@
 // Hand-built SVG landscape used behind headers, chats, the call screen, the
 // sign-in page and the landing page ("wide", a 16:9 version): a night sky
 // with the moon and a sunset over the lake, or, in the light theme, a sunny
-// day with clouds, green hills and flowers.
+// day with clouds, green hills and flowers. Every colour palette (see
+// src/lib/theme.ts) paints the same landscape in its own colours.
 import { memo, useId } from 'react';
-import { useTheme } from '../lib/theme';
+import { useTheme, type PaletteId } from '../lib/theme';
 
 type Variant = 'full' | 'header' | 'footer' | 'wide';
 
@@ -44,6 +45,10 @@ const NIGHT = {
   bush: '#090a20',
   flowers: ['#f49cc0', '#f7b0cf'],
   flowerCenter: '#ffe1ec',
+  sunCore: '#fff1d6', // the sun just under the horizon at night
+  nightClouds: ['#c98bd0', '#9a7fe0', '#ffb4a2', '#f39cb6', '#f2a3c4'],
+  meadow: ['#6cc35f', '#2f8a3e'],
+  cloudShade: '#d7ebfa',
 };
 
 const DAY: typeof NIGHT = {
@@ -66,9 +71,287 @@ const DAY: typeof NIGHT = {
   bush: '#2a8547',
   flowers: ['#ffffff', '#fff4f8'],
   flowerCenter: '#ffd54a',
+  sunCore: '#fff1d6',
+  nightClouds: NIGHT.nightClouds,
+  meadow: ['#6cc35f', '#2f8a3e'],
+  cloudShade: '#d7ebfa',
 };
 
 type Palette = typeof NIGHT;
+
+// A deep navy night with a teal moonrise; a tropical lagoon with sandy shores.
+const OCEAN_NIGHT: Palette = {
+  day: false,
+  sky: [[0, '#050d22'], [0.3, '#0b1f45'], [0.55, '#123a6e'], [0.74, '#1d5a8f'], [0.87, '#2f7fa8'], [0.95, '#5fb0c4'], [1, '#9fd8d6']],
+  skyHeader: [[0, '#06102a'], [0.5, '#0d2550'], [0.8, '#16457a'], [0.93, '#2a7099'], [1, '#62aec2']],
+  skyFooter: [[0, '#123a6e', 0], [0.45, '#1a4f84', 0.55], [0.8, '#2a78a3'], [1, '#7cc4cc']],
+  glow: [[0, '#e6fbff', 0.9], [0.18, '#a8e6f0', 0.65], [0.5, '#5cb6d0', 0.25], [1, '#2a6fa0', 0]],
+  far: [[0, '#3d7bb0'], [1, '#1f4c80']],
+  water: [[0, '#2f78a6'], [0.22, '#1a4f80'], [0.6, '#0c2a52'], [1, '#040c20']],
+  fade: '#3d7bb0',
+  mid: '#123660',
+  midHeader: '#0f2f58',
+  midReflection: '#133a66',
+  shoreL: '#0a1d3c',
+  shoreR: '#081834',
+  glint: '#c9f3ff',
+  ripple: '#a8dcff',
+  rippleOpacity: 0.14,
+  bush: '#030a18',
+  flowers: ['#7fd8e8', '#a6e8f2'],
+  flowerCenter: '#e8fbff',
+  sunCore: '#e9fbff',
+  nightClouds: ['#5f9cc8', '#4a7fc0', '#8fd0d8', '#6fb8cf', '#7fb4d8'],
+  meadow: ['#6cc35f', '#2f8a3e'],
+  cloudShade: '#d3eefa',
+};
+
+const OCEAN_DAY: Palette = {
+  day: true,
+  sky: [[0, '#0a7fd6'], [0.32, '#1e9be6'], [0.6, '#5cc4f0'], [0.84, '#a6e3f7'], [1, '#e0f7fc']],
+  skyHeader: [[0, '#0c86dc'], [0.55, '#33aceb'], [1, '#9adcf5']],
+  skyFooter: [[0, '#7fd0f0', 0], [0.45, '#9cdcf4', 0.55], [1, '#d2f1fb']],
+  glow: DAY.glow,
+  far: [[0, '#86c9e6'], [1, '#4fa3cf']],
+  water: [[0, '#8eeee8'], [0.22, '#3fd0d6'], [0.6, '#14a8c4'], [1, '#0a78a6']],
+  fade: '#86c9e6',
+  mid: '#3fae8a',
+  midHeader: '#35a07f',
+  midReflection: '#2a8f7a',
+  shoreL: '#ecd7a6',
+  shoreR: '#e4cc94',
+  glint: '#ffffff',
+  ripple: '#ffffff',
+  rippleOpacity: 0.3,
+  bush: '#1f8a5e',
+  flowers: ['#ffffff', '#fff0f4'],
+  flowerCenter: '#ffcf3a',
+  sunCore: '#fff1d6',
+  nightClouds: OCEAN_NIGHT.nightClouds,
+  meadow: ['#5fcf8a', '#21915a'],
+  cloudShade: '#d3eefa',
+};
+
+// A green glow over dark pines at night; spring woods by day.
+const FOREST_NIGHT: Palette = {
+  day: false,
+  sky: [[0, '#040f12'], [0.3, '#08202a'], [0.55, '#0e3a3e'], [0.74, '#17584f'], [0.87, '#2b7d62'], [0.95, '#5fae7c'], [1, '#a8dca0']],
+  skyHeader: [[0, '#05131a'], [0.5, '#0a2a30'], [0.8, '#12474a'], [0.93, '#226e5c'], [1, '#58a67c']],
+  skyFooter: [[0, '#0e3a3e', 0], [0.45, '#14504c', 0.55], [0.8, '#257458'], [1, '#7cc490']],
+  glow: [[0, '#f0ffe0', 0.9], [0.18, '#c0f0b0', 0.6], [0.5, '#6fc49a', 0.25], [1, '#2a7d6a', 0]],
+  far: [[0, '#3f8a72'], [1, '#1f5448']],
+  water: [[0, '#3a8a6e'], [0.22, '#1e5a50'], [0.6, '#0c2e30'], [1, '#030e10']],
+  fade: '#3f8a72',
+  mid: '#123e38',
+  midHeader: '#0f3530',
+  midReflection: '#14443c',
+  shoreL: '#0a2420',
+  shoreR: '#081e1b',
+  glint: '#d8ffd0',
+  ripple: '#a8f0c8',
+  rippleOpacity: 0.13,
+  bush: '#02100c',
+  flowers: ['#f6e27a', '#ffeea0'],
+  flowerCenter: '#fff8d8',
+  sunCore: '#f4ffe6',
+  nightClouds: ['#6fae8a', '#4f8f86', '#a8d6a0', '#7fc49a', '#8fc4b0'],
+  meadow: ['#5fbf4f', '#26803a'],
+  cloudShade: '#dcefe8',
+};
+
+const FOREST_DAY: Palette = {
+  day: true,
+  sky: [[0, '#2f86d8'], [0.32, '#4ea2e6'], [0.6, '#86c6ee'], [0.84, '#c4e6f2'], [1, '#eef8ec']],
+  skyHeader: [[0, '#3189da'], [0.55, '#5aa9e8'], [1, '#b6def0']],
+  skyFooter: [[0, '#9ad0ee', 0], [0.45, '#b2dcf0', 0.55], [1, '#e2f3ea']],
+  glow: DAY.glow,
+  far: [[0, '#7fb8a8'], [1, '#4c8f7c']],
+  water: [[0, '#a6e0d4'], [0.22, '#5fbfae'], [0.6, '#2f978a'], [1, '#1a6e66']],
+  fade: '#7fb8a8',
+  mid: '#2f8f55',
+  midHeader: '#28844d',
+  midReflection: '#237a4a',
+  shoreL: '#22783f',
+  shoreR: '#1f6e3a',
+  glint: '#ffffff',
+  ripple: '#ffffff',
+  rippleOpacity: 0.3,
+  bush: '#1b6b37',
+  flowers: ['#ffffff', '#fffbe8'],
+  flowerCenter: '#ffd54a',
+  sunCore: '#fff1d6',
+  nightClouds: FOREST_NIGHT.nightClouds,
+  meadow: ['#5fbf4f', '#26803a'],
+  cloudShade: '#dcefe8',
+};
+
+// An ember dusk at night; a golden autumn afternoon by day.
+const SUNSET_NIGHT: Palette = {
+  day: false,
+  sky: [[0, '#120a1e'], [0.3, '#2a1236'], [0.55, '#5a1e44'], [0.74, '#9a3446'], [0.87, '#d8583f'], [0.95, '#f4904a'], [1, '#ffc574']],
+  skyHeader: [[0, '#150b22'], [0.5, '#33163c'], [0.8, '#6e2446'], [0.93, '#b44244'], [1, '#f08a4c']],
+  skyFooter: [[0, '#5a1e44', 0], [0.45, '#7a2846', 0.55], [0.8, '#c24a42'], [1, '#f7a05a']],
+  glow: [[0, '#fff0c0', 0.95], [0.18, '#ffc27a', 0.75], [0.5, '#f0784a', 0.3], [1, '#b03a50', 0]],
+  far: [[0, '#a8485a'], [1, '#5e2446']],
+  water: [[0, '#b24a4e'], [0.22, '#6a2444'], [0.6, '#2c1030'], [1, '#0e0614']],
+  fade: '#a8485a',
+  mid: '#3a1634',
+  midHeader: '#33132f',
+  midReflection: '#3e1838',
+  shoreL: '#200b20',
+  shoreR: '#1b091c',
+  glint: '#ffd59a',
+  ripple: '#ffb88a',
+  rippleOpacity: 0.14,
+  bush: '#0c050c',
+  flowers: ['#ffb46a', '#ffd08f'],
+  flowerCenter: '#fff0d0',
+  sunCore: '#fff0d0',
+  nightClouds: ['#e07a6a', '#b04a6a', '#ffb07a', '#f08a6a', '#ff9a8a'],
+  meadow: ['#e0b04a', '#b07a26'],
+  cloudShade: '#f6e2cc',
+};
+
+const SUNSET_DAY: Palette = {
+  day: true,
+  sky: [[0, '#2a7fd0'], [0.32, '#4f9fe0'], [0.6, '#8ec2ea'], [0.84, '#f2d6b0'], [1, '#ffe2b0']],
+  skyHeader: [[0, '#2c83d4'], [0.55, '#62a8e2'], [1, '#f0d2ae']],
+  skyFooter: [[0, '#9cc8ea', 0], [0.45, '#d8d2c4', 0.55], [1, '#ffe6c2']],
+  glow: [[0, '#fff6d8', 0.7], [0.4, '#ffe6b0', 0.3], [1, '#ffffff', 0]],
+  far: [[0, '#c8a68e'], [1, '#9a7a72']],
+  water: [[0, '#f2cfa0'], [0.22, '#8fc0d8'], [0.6, '#4a92c0'], [1, '#2a6a9a']],
+  fade: '#c8a68e',
+  mid: '#c78a3e',
+  midHeader: '#b97e38',
+  midReflection: '#a06a30',
+  shoreL: '#b0662c',
+  shoreR: '#a35d28',
+  glint: '#fff6e0',
+  ripple: '#ffffff',
+  rippleOpacity: 0.28,
+  bush: '#a24e1e',
+  flowers: ['#ffd27a', '#ffe4a8'],
+  flowerCenter: '#e2674f',
+  sunCore: '#fff1d6',
+  nightClouds: SUNSET_NIGHT.nightClouds,
+  meadow: ['#e0b04a', '#b07a26'],
+  cloudShade: '#f6e2cc',
+};
+
+// A plum night sky; cherry blossom hills by day.
+const SAKURA_NIGHT: Palette = {
+  day: false,
+  sky: [[0, '#120820'], [0.3, '#2a1040'], [0.55, '#4e1a5e'], [0.74, '#7e2a78'], [0.87, '#b84a8e'], [0.95, '#e87aa6'], [1, '#ffb3c8']],
+  skyHeader: [[0, '#150a26'], [0.5, '#321448'], [0.8, '#62226e'], [0.93, '#a03e88'], [1, '#e080a8']],
+  skyFooter: [[0, '#4e1a5e', 0], [0.45, '#6a226e', 0.55], [0.8, '#a8408a'], [1, '#f49abc']],
+  glow: [[0, '#ffe6f0', 0.95], [0.18, '#ffb6d0', 0.7], [0.5, '#e07aaa', 0.28], [1, '#9a4090', 0]],
+  far: [[0, '#9a5aa8'], [1, '#5a2a72']],
+  water: [[0, '#9a4a92'], [0.22, '#5a2268'], [0.6, '#260e3a'], [1, '#0c0616']],
+  fade: '#9a5aa8',
+  mid: '#36164c',
+  midHeader: '#30134a',
+  midReflection: '#3c1a54',
+  shoreL: '#1e0c2e',
+  shoreR: '#1a0a28',
+  glint: '#ffd6e6',
+  ripple: '#ffc0e0',
+  rippleOpacity: 0.13,
+  bush: '#0c0614',
+  flowers: ['#ff9cc8', '#ffc4dc'],
+  flowerCenter: '#fff0f6',
+  sunCore: '#fff0f4',
+  nightClouds: ['#d68ac8', '#a070d0', '#ffb0c8', '#f09ac0', '#f0a8d0'],
+  meadow: ['#7ccf7a', '#3f9a52'],
+  cloudShade: '#f4e0ee',
+};
+
+const SAKURA_DAY: Palette = {
+  day: true,
+  sky: [[0, '#5a8fe0'], [0.32, '#7aa8ea'], [0.6, '#a8c6f2'], [0.84, '#e6d6f2'], [1, '#ffe6f0']],
+  skyHeader: [[0, '#5d93e2'], [0.55, '#86b0ec'], [1, '#f0d8ee']],
+  skyFooter: [[0, '#b2ccf2', 0], [0.45, '#d8d2f0', 0.55], [1, '#ffe8f2']],
+  glow: DAY.glow,
+  far: [[0, '#b6a6d8'], [1, '#8a7ec0']],
+  water: [[0, '#d6c8f0'], [0.22, '#a8b4ea'], [0.6, '#7a92d8'], [1, '#5670b8']],
+  fade: '#b6a6d8',
+  mid: '#f0a6c4',
+  midHeader: '#e898bc',
+  midReflection: '#d48ab0',
+  shoreL: '#5aa66a',
+  shoreR: '#529c62',
+  glint: '#ffffff',
+  ripple: '#ffffff',
+  rippleOpacity: 0.3,
+  bush: '#e07aa8',
+  flowers: ['#ffffff', '#ffe8f2'],
+  flowerCenter: '#ff7aa8',
+  sunCore: '#fff1d6',
+  nightClouds: SAKURA_NIGHT.nightClouds,
+  meadow: ['#7ccf7a', '#3f9a52'],
+  cloudShade: '#f4e0ee',
+};
+
+// Silver moonlight in black and grey; a misty, overcast day.
+const GRAPHITE_NIGHT: Palette = {
+  day: false,
+  sky: [[0, '#050608'], [0.3, '#0e1116'], [0.55, '#1c2129'], [0.74, '#2e3540'], [0.87, '#4a5260'], [0.95, '#7a828e'], [1, '#b4bac2']],
+  skyHeader: [[0, '#06070a'], [0.5, '#12161c'], [0.8, '#252b34'], [0.93, '#3e4652'], [1, '#78808c']],
+  skyFooter: [[0, '#1c2129', 0], [0.45, '#262c35', 0.55], [0.8, '#454d5a'], [1, '#9aa2ac']],
+  glow: [[0, '#ffffff', 0.85], [0.18, '#dfe4ea', 0.55], [0.5, '#9aa4b0', 0.2], [1, '#4a5260', 0]],
+  far: [[0, '#5a6270'], [1, '#30363f']],
+  water: [[0, '#4e5663'], [0.22, '#2a3038'], [0.6, '#121519'], [1, '#040506']],
+  fade: '#5a6270',
+  mid: '#1a1e24',
+  midHeader: '#16191e',
+  midReflection: '#1e2228',
+  shoreL: '#0d0f12',
+  shoreR: '#0b0d10',
+  glint: '#eef2f6',
+  ripple: '#cfd6de',
+  rippleOpacity: 0.12,
+  bush: '#030304',
+  flowers: ['#c8ced6', '#e2e6ea'],
+  flowerCenter: '#ffffff',
+  sunCore: '#f4f6f8',
+  nightClouds: ['#8a929e', '#6a727e', '#b0b8c2', '#9aa2ac', '#a4acb6'],
+  meadow: ['#7a8a96', '#4e5c68'],
+  cloudShade: '#dde4ea',
+};
+
+const GRAPHITE_DAY: Palette = {
+  day: true,
+  sky: [[0, '#7d8fa3'], [0.32, '#95a6b8'], [0.6, '#b4c2d0'], [0.84, '#d4dde6'], [1, '#eef2f5']],
+  skyHeader: [[0, '#8092a6'], [0.55, '#a2b2c2'], [1, '#d0dae3']],
+  skyFooter: [[0, '#b0bfcd', 0], [0.45, '#c4d0db', 0.55], [1, '#e8edf2']],
+  glow: DAY.glow,
+  far: [[0, '#a6b2be'], [1, '#7c8a98']],
+  water: [[0, '#c2cdd6'], [0.22, '#94a4b2'], [0.6, '#6c7e8e'], [1, '#4c5c6c']],
+  fade: '#a6b2be',
+  mid: '#5e6e7c',
+  midHeader: '#566674',
+  midReflection: '#4e5e6c',
+  shoreL: '#46545f',
+  shoreR: '#404d58',
+  glint: '#ffffff',
+  ripple: '#ffffff',
+  rippleOpacity: 0.3,
+  bush: '#3a4650',
+  flowers: ['#ffffff', '#eef2f6'],
+  flowerCenter: '#c8d2dc',
+  sunCore: '#fff1d6',
+  nightClouds: GRAPHITE_NIGHT.nightClouds,
+  meadow: ['#7a8a96', '#4e5c68'],
+  cloudShade: '#dde4ea',
+};
+
+export const SCENES: Record<PaletteId, { night: Palette; day: Palette }> = {
+  twilight: { night: NIGHT, day: DAY },
+  ocean: { night: OCEAN_NIGHT, day: OCEAN_DAY },
+  forest: { night: FOREST_NIGHT, day: FOREST_DAY },
+  sunset: { night: SUNSET_NIGHT, day: SUNSET_DAY },
+  sakura: { night: SAKURA_NIGHT, day: SAKURA_DAY },
+  graphite: { night: GRAPHITE_NIGHT, day: GRAPHITE_DAY },
+};
 
 function rng(seed: number) {
   let s = seed;
@@ -217,33 +500,33 @@ function Defs({ id, variant, p }: { id: string; variant: Variant; p: Palette }) 
         <stop offset="1" stopColor={p.fade} stopOpacity="0" />
       </linearGradient>
       <linearGradient id={`${id}-meadow`} x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#6cc35f" />
-        <stop offset="1" stopColor="#2f8a3e" />
+        <stop offset="0" stopColor={p.meadow[0]} />
+        <stop offset="1" stopColor={p.meadow[1]} />
       </linearGradient>
     </defs>
   );
 }
 
-function NightClouds({ h }: { h: number }) {
+function NightClouds({ h, p }: { h: number; p: Palette }) {
   return (
     <g>
-      <g transform={`translate(86 ${h - 128})`} fill="#c98bd0" opacity={0.28}>
+      <g transform={`translate(86 ${h - 128})`} fill={p.nightClouds[0]} opacity={0.28}>
         <ellipse rx={64} ry={8} />
         <ellipse cx={28} cy={-6} rx={38} ry={9} />
         <ellipse cx={-26} cy={-2} rx={28} ry={6} />
       </g>
-      <g transform={`translate(306 ${h - 182})`} fill="#9a7fe0" opacity={0.25}>
+      <g transform={`translate(306 ${h - 182})`} fill={p.nightClouds[1]} opacity={0.25}>
         <ellipse rx={74} ry={7} />
         <ellipse cx={-22} cy={-5} rx={36} ry={8} />
       </g>
-      <g transform={`translate(214 ${h - 74})`} fill="#ffb4a2" opacity={0.32}>
+      <g transform={`translate(214 ${h - 74})`} fill={p.nightClouds[2]} opacity={0.32}>
         <ellipse rx={96} ry={6} />
         <ellipse cx={40} cy={-4} rx={44} ry={6} />
       </g>
-      <g transform={`translate(44 ${h - 52})`} fill="#f39cb6" opacity={0.3}>
+      <g transform={`translate(44 ${h - 52})`} fill={p.nightClouds[3]} opacity={0.3}>
         <ellipse rx={64} ry={5} />
       </g>
-      <g transform={`translate(360 ${h - 102})`} fill="#f2a3c4" opacity={0.22}>
+      <g transform={`translate(360 ${h - 102})`} fill={p.nightClouds[4]} opacity={0.22}>
         <ellipse rx={58} ry={6} />
       </g>
     </g>
@@ -251,10 +534,10 @@ function NightClouds({ h }: { h: number }) {
 }
 
 /** A fluffy cumulus, centred at (x, y). */
-function Cloud({ x, y, s = 1, o = 0.95 }: { x: number; y: number; s?: number; o?: number }) {
+function Cloud({ x, y, s = 1, o = 0.95, shade }: { x: number; y: number; s?: number; o?: number; shade: string }) {
   return (
     <g transform={`translate(${x} ${y}) scale(${s})`} opacity={o}>
-      <ellipse cx={0} cy={6} rx={46} ry={11} fill="#d7ebfa" />
+      <ellipse cx={0} cy={6} rx={46} ry={11} fill={shade} />
       <g fill="#ffffff">
         <ellipse cx={0} cy={2} rx={44} ry={11} />
         <circle cx={-20} cy={-4} r={14} />
@@ -266,19 +549,20 @@ function Cloud({ x, y, s = 1, o = 0.95 }: { x: number; y: number; s?: number; o?
 }
 
 // Kept to the sides: the middle of the sky is where screens put text.
-function DayClouds({ h }: { h: number }) {
+function DayClouds({ h, p }: { h: number; p: Palette }) {
+  const shade = p.cloudShade;
   return (
     <g>
-      <Cloud x={62} y={h - 310} s={0.9} />
-      <Cloud x={352} y={h - 250} s={0.55} o={0.85} />
-      <Cloud x={34} y={h - 150} s={0.7} o={0.9} />
-      <Cloud x={362} y={h - 105} s={0.6} o={0.85} />
+      <Cloud x={62} y={h - 310} s={0.9} shade={shade} />
+      <Cloud x={352} y={h - 250} s={0.55} o={0.85} shade={shade} />
+      <Cloud x={34} y={h - 150} s={0.7} o={0.9} shade={shade} />
+      <Cloud x={362} y={h - 105} s={0.6} o={0.85} shade={shade} />
     </g>
   );
 }
 
 function Clouds({ h, p }: { h: number; p: Palette }) {
-  return p.day ? <DayClouds h={h} /> : <NightClouds h={h} />;
+  return p.day ? <DayClouds h={h} p={p} /> : <NightClouds h={h} p={p} />;
 }
 
 /** Lit windows along the far shore at night; a little village by day. */
@@ -385,21 +669,21 @@ function WideScene({ id, className, p, onSkyClick }: { id: string; className?: s
       {!p.day && <Stars stars={STARS_WIDE} />}
       {p.day ? (
         <g>
-          <Cloud x={210} y={H - 470} s={1.7} />
-          <Cloud x={430} y={H - 400} s={0.9} o={0.85} />
-          <Cloud x={120} y={H - 250} s={1.3} o={0.9} />
-          <Cloud x={700} y={H - 330} s={0.8} o={0.8} />
-          <Cloud x={980} y={H - 200} s={1.1} o={0.85} />
-          <Cloud x={1290} y={H - 320} s={1.2} o={0.9} />
-          <Cloud x={1520} y={H - 170} s={0.9} o={0.85} />
+          <Cloud x={210} y={H - 470} s={1.7} shade={p.cloudShade} />
+          <Cloud x={430} y={H - 400} s={0.9} o={0.85} shade={p.cloudShade} />
+          <Cloud x={120} y={H - 250} s={1.3} o={0.9} shade={p.cloudShade} />
+          <Cloud x={700} y={H - 330} s={0.8} o={0.8} shade={p.cloudShade} />
+          <Cloud x={980} y={H - 200} s={1.1} o={0.85} shade={p.cloudShade} />
+          <Cloud x={1290} y={H - 320} s={1.2} o={0.9} shade={p.cloudShade} />
+          <Cloud x={1520} y={H - 170} s={0.9} o={0.85} shade={p.cloudShade} />
         </g>
       ) : (
         <g transform="scale(4 1)">
-          <NightClouds h={H} />
+          <NightClouds h={H} p={p} />
         </g>
       )}
       <circle cx={sunX} cy={H - 20} r={420} fill={`url(#${id}-sun)`} />
-      {!p.day && <circle cx={sunX} cy={H - 26} r={22} fill="#fff1d6" />}
+      {!p.day && <circle cx={sunX} cy={H - 26} r={22} fill={p.sunCore} />}
       {tile(FAR, `url(#${id}-far)`, 1.45)}
       {tile(MID, p.mid, 1.7)}
       <path d={SHORE_L} transform={`translate(0 ${H}) scale(2.4 1.3)`} fill={p.shoreL} />
@@ -445,11 +729,25 @@ function WideScene({ id, className, p, onSkyClick }: { id: string; className?: s
 
 /**
  * The landscape. onSkyClick makes the moon / sun a button (the landing page
- * uses it to switch between night and day).
+ * uses it to switch between night and day). palette paints it in a palette
+ * other than the current one (the previews in Settings).
  */
-function Scenery({ variant = 'full', className, onSkyClick }: { variant?: Variant; className?: string; onSkyClick?: () => void }) {
+function Scenery({
+  variant = 'full',
+  className,
+  onSkyClick,
+  palette,
+}: {
+  variant?: Variant;
+  className?: string;
+  onSkyClick?: () => void;
+  palette?: PaletteId;
+}) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, '');
-  const p = useTheme((s) => s.theme) === 'light' ? DAY : NIGHT;
+  const theme = useTheme((s) => s.theme);
+  const current = useTheme((s) => s.palette);
+  const scene = SCENES[palette ?? current] ?? SCENES.twilight;
+  const p = theme === 'light' ? scene.day : scene.night;
 
   if (variant === 'wide') return <WideScene id={id} className={className} p={p} onSkyClick={onSkyClick} />;
 
@@ -459,10 +757,10 @@ function Scenery({ variant = 'full', className, onSkyClick }: { variant?: Varian
       <svg className={className} viewBox="0 0 400 150" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
         <Defs id={id} variant="header" p={p} />
         <rect width={400} height={H} fill={`url(#${id}-sky)`} />
-        {p.day ? <Cloud x={120} y={58} s={0.45} o={0.9} /> : <Stars stars={STARS_HEADER} />}
+        {p.day ? <Cloud x={120} y={58} s={0.45} o={0.9} shade={p.cloudShade} /> : <Stars stars={STARS_HEADER} />}
         <SkyLight p={p} id={id} x={262} y={44} r={p.day ? 13 : 11} />
         <circle cx={288} cy={H - 12} r={90} fill={`url(#${id}-sun)`} />
-        {!p.day && <circle cx={288} cy={H - 14} r={7} fill="#fff0d2" />}
+        {!p.day && <circle cx={288} cy={H - 14} r={7} fill={p.sunCore} />}
         <path d={FAR} transform={`translate(0 ${H}) scale(1 0.52)`} fill={`url(#${id}-far)`} opacity={0.9} />
         <path d={MID} transform={`translate(0 ${H}) scale(1 0.62)`} fill={p.midHeader} />
       </svg>
@@ -477,7 +775,7 @@ function Scenery({ variant = 'full', className, onSkyClick }: { variant?: Varian
         <Defs id={id} variant="footer" p={p} />
         <rect width={400} height={H + 1} fill={`url(#${id}-sky)`} />
         <circle cx={288} cy={H - 14} r={110} fill={`url(#${id}-sun)`} />
-        {!p.day && <circle cx={288} cy={H - 16} r={10} fill="#fff1d6" />}
+        {!p.day && <circle cx={288} cy={H - 16} r={10} fill={p.sunCore} />}
         <Mountains id={id} h={H} scale={0.75} p={p} />
         <Lake id={id} h={H} bottom={B} sunX={288} p={p} />
         {p.day && <Meadow id={id} bottom={B} sy={0.8} />}
@@ -506,7 +804,7 @@ function Scenery({ variant = 'full', className, onSkyClick }: { variant?: Varian
       {!p.day && <Stars stars={STARS_FULL} />}
       <Clouds h={H} p={p} />
       <circle cx={288} cy={H - 20} r={150} fill={`url(#${id}-sun)`} />
-      {!p.day && <circle cx={288} cy={H - 24} r={15} fill="#fff1d6" />}
+      {!p.day && <circle cx={288} cy={H - 24} r={15} fill={p.sunCore} />}
       <Mountains id={id} h={H} p={p} />
       <Lake id={id} h={H} bottom={B} sunX={288} p={p} />
       {p.day && <Meadow id={id} bottom={B} />}

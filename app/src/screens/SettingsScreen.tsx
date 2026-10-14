@@ -3,6 +3,7 @@ import {
   Ban,
   Bell,
   Camera,
+  Check,
   ChevronRight,
   KeyRound,
   LogOut,
@@ -16,13 +17,14 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Avatar from '../components/Avatar';
+import Scenery from '../components/Scenery';
 import Toggle from '../components/Toggle';
 import TabBar from '../components/TabBar';
 import { api, errorText } from '../lib/api';
 import { getServerUrl, isNativeShell } from '../lib/config';
 import { squareAvatar } from '../lib/media';
 import { disablePush, enablePush, pushAvailable, pushEnabled, pushPermission } from '../lib/push';
-import { setTheme, useTheme, type ThemeChoice } from '../lib/theme';
+import { PALETTES, setPalette, setTheme, useTheme, type ThemeChoice } from '../lib/theme';
 import { navigate } from '../lib/router';
 import { socket } from '../lib/socket';
 import { logout, updateProfile, useAuth } from '../store/auth';
@@ -57,6 +59,37 @@ function ThemePicker() {
         >
           <Icon size={22} />
           <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The colour palettes, each previewed as its own sky with a pair of bubbles. */
+function PalettePicker() {
+  const current = useTheme((s) => s.palette);
+  return (
+    <div className="card palette-picker" role="radiogroup" aria-label="Colour theme">
+      {PALETTES.map(({ id, name }) => (
+        <button
+          key={id}
+          className={`palette-option ${current === id ? 'on' : ''}`}
+          data-palette={id}
+          role="radio"
+          aria-checked={current === id}
+          onClick={() => setPalette(id)}
+        >
+          <span className="palette-preview">
+            <Scenery variant="header" className="palette-scene" palette={id} />
+            <span className="palette-bubble in" />
+            <span className="palette-bubble out" />
+            {current === id && (
+              <span className="palette-check">
+                <Check size={12} strokeWidth={3} />
+              </span>
+            )}
+          </span>
+          <span className="palette-name">{name}</span>
         </button>
       ))}
     </div>
@@ -248,6 +281,7 @@ export default function SettingsScreen() {
 
         <h3 className="section-title">Appearance</h3>
         <ThemePicker />
+        <PalettePicker />
 
         <h3 className="section-title">Privacy</h3>
         <div className="card list-card">

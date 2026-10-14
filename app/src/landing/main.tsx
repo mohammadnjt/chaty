@@ -1,7 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import Landing from './Landing';
+import { keepDefaultPalette } from '../lib/theme';
 import './landing.css';
+
+keepDefaultPalette();
 
 // Old links to the app (/#/chat/12) now live under /app/.
 if (location.hash.startsWith('#/')) location.replace('/app/' + location.hash);
