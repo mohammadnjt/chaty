@@ -41,6 +41,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/me/password", s.authed(s.changePassword))
 	mux.HandleFunc("GET /api/config", s.authed(s.clientConfig))
 	mux.HandleFunc("GET /api/users", s.authed(s.searchUsers))
+	mux.HandleFunc("POST /api/contacts/match", s.authed(s.matchContacts))
 	mux.HandleFunc("GET /api/blocks", s.authed(s.listBlocked))
 	mux.HandleFunc("POST /api/users/{id}/block", s.authed(s.blockUser))
 	mux.HandleFunc("DELETE /api/users/{id}/block", s.authed(s.unblockUser))
@@ -268,6 +269,9 @@ func (s *Server) meView(u UserRec) User {
 	return v
 }
 
+// Sign-up and sign-in take an 11-digit mobile number (the app checks it too).
+const errMobileFormat = "enter an 11-digit mobile number, e.g. 09123456789"
+
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	st := s.settings.Get()
 	if !st.RegistrationOpen {
@@ -279,8 +283,8 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	phone, ok := normalizePhone(in.Phone)
-	if !ok {
-		httpError(w, http.StatusBadRequest, "enter a valid phone number")
+	if !ok || !isMobile(phone) {
+		httpError(w, http.StatusBadRequest, errMobileFormat)
 		return
 	}
 	in.Name = strings.TrimSpace(in.Name)
@@ -323,7 +327,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &in) {
 		return
 	}
-	phone, _ := normalizePhone(in.Phone)
+	phone, ok := normalizePhone(in.Phone)
+	if !ok || !isMobile(phone) {
+		httpError(w, http.StatusBadRequest, errMobileFormat)
+		return
+	}
 	u, ok := s.store.UserByPhone(phone)
 	if !ok {
 		log.Printf("login: no account for %s", maskPhone(phone))
@@ -482,6 +490,38 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request, me UserR
 
 func (s *Server) searchUsers(w http.ResponseWriter, r *http.Request, me UserRec) {
 	writeJSON(w, http.StatusOK, s.hub.withOnline(s.store.FindUsers(r.URL.Query().Get("q"), me.ID)))
+}
+
+// matchContacts tells which numbers from the phone's address book belong to
+// people on Chaty; the app sends them in batches.
+func (s *Server) matchContacts(w http.ResponseWriter, r *http.Request, me UserRec) {
+	var in struct {
+		Phones []string `json:"phones"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if len(in.Phones) > 5000 {
+		httpError(w, http.StatusBadRequest, "send at most 5000 numbers at a time")
+		return
+	}
+	found := s.store.MatchPhones(in.Phones, me.ID)
+	phones := make([]string, 0, len(found))
+	users := make([]User, 0, len(found))
+	for phone, u := range found {
+		phones = append(phones, phone)
+		users = append(users, u)
+	}
+	users = s.hub.withOnline(users)
+	type match struct {
+		Phone string `json:"phone"`
+		User  User   `json:"user"`
+	}
+	out := make([]match, len(users))
+	for i := range users {
+		out[i] = match{phones[i], users[i]}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"matches": out})
 }
 
 func (s *Server) listBlocked(w http.ResponseWriter, r *http.Request, me UserRec) {

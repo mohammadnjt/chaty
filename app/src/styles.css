@@ -1156,6 +1156,11 @@ button.user-row:active {
   height: 68px;
 }
 
+/* Someone in the phone's contacts who isn't on Chaty. */
+.user-row.off {
+  opacity: 0.45;
+}
+
 .user-row-body {
   flex: 1;
   min-width: 0;

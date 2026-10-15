@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { isNativeShell } from '../lib/config';
 import { uid } from '../lib/format';
-import { callAudio, ensureMediaPermission, notify, requestMediaPermission } from '../lib/native';
+import { askPermissions, callAudio, ensureMediaPermission, notify } from '../lib/native';
 import { socket } from '../lib/socket';
 import { playHangup, playRingback, playRingtone, releaseCallTones, stopTones } from '../lib/sounds';
 import type { CallKind, User } from '../lib/types';
@@ -245,7 +245,7 @@ async function acquireMedia(kind: CallKind, callId: string): Promise<MediaStream
         }
       }
       if (isNativeShell && name !== 'TimeoutError' && Date.now() < deadline && get().callId === callId) {
-        if (!asked) requestMediaPermission();
+        if (!asked) void askPermissions(kind === 'video' ? 'RECORD_AUDIO,CAMERA' : 'RECORD_AUDIO');
         asked = true;
         await sleep(1000);
         continue;

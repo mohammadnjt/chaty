@@ -1,6 +1,7 @@
 import { Forward, Mic, Paperclip, Pencil, Reply, SendHorizontal, Smile, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { formatDuration } from '../lib/format';
+import { ensureMediaPermission } from '../lib/native';
 import { socket } from '../lib/socket';
 import type { Message } from '../lib/types';
 import { errorText } from '../lib/api';
@@ -197,6 +198,11 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
   async function startRecording() {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       toast('Voice messages need a secure (https) connection');
+      return;
+    }
+    // In the Android app the microphone is asked for now, the first time it's needed.
+    if (!(await ensureMediaPermission(false))) {
+      toast('Allow microphone access to record voice messages');
       return;
     }
     pauseVoice();

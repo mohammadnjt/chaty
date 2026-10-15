@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { api, ApiError, setApiToken, setUnauthorizedHandler, type AuthResponse } from '../lib/api';
-import { isNativeShell, needsServerUrl, storage } from '../lib/config';
-import { askPermissions } from '../lib/native';
+import { needsServerUrl, storage } from '../lib/config';
 import { disablePush, enablePush } from '../lib/push';
 import { navigate } from '../lib/router';
 import { socket } from '../lib/socket';
@@ -48,16 +47,10 @@ function signedIn(token: string, me: User) {
   useAuth.setState({ status: 'ready', me });
   socket.connect(token);
   void loadConfig();
-  void (async () => {
-    // The Android app asks once, up front, for what calls and notifications
-    // need, so the first call doesn't stop for Android's prompts.
-    if (isNativeShell && !storage.get('chaty.askedPermissions')) {
-      storage.set('chaty.askedPermissions', '1');
-      await askPermissions('RECORD_AUDIO,CAMERA,POST_NOTIFICATIONS');
-    }
-    // Keep this device's push registration fresh (browsers don't prompt here).
-    await enablePush(false).catch(() => false);
-  })();
+  // Keep this device's push registration fresh (browsers don't prompt here;
+  // Android asks about notifications itself). The microphone and camera are
+  // asked for only when a call or a voice message needs them.
+  void enablePush(false).catch(() => false);
   loadConversations().catch(() => {});
   if (me.role === 'admin') refreshPendingCount();
 }

@@ -1,7 +1,9 @@
-import { Check, ChevronLeft, Search, UserSearch, Users } from 'lucide-react';
+import { BookUser, Check, ChevronLeft, Search, UserSearch, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Avatar from '../components/Avatar';
 import { api, errorText } from '../lib/api';
+import { contactsAvailable, hasContactsPermission, readContacts } from '../lib/native';
+import { normalizePhone } from '../lib/phone';
 import { goBack, navigate } from '../lib/router';
 import type { User } from '../lib/types';
 import { addConversation, useChat } from '../store/chat';
@@ -120,16 +122,129 @@ function Results({
   );
 }
 
+interface PhoneRow {
+  phone: string;
+  name: string; // as saved in the phone
+  user?: User; // on Chaty
+}
+
+/**
+ * The phone's contacts, checked against the server: who's on Chaty and who
+ * isn't. Only in the Android app; it reads them by itself once allowed.
+ */
+function usePhoneContacts() {
+  const [rows, setRows] = useState<PhoneRow[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function load(ask: boolean) {
+    setLoading(true);
+    try {
+      const list = await readContacts(ask);
+      if (!list) {
+        if (ask) toast("Allow access to contacts to see who's on Chaty");
+        return;
+      }
+      const names = new Map<string, string>();
+      for (const c of list) {
+        const phone = normalizePhone(c.phone);
+        if (phone && !names.has(phone)) names.set(phone, c.name.trim() || c.phone);
+      }
+      const phones = [...names.keys()];
+      const users = new Map<string, User>();
+      for (let i = 0; i < phones.length; i += 2000) {
+        const { matches } = await api.matchContacts(phones.slice(i, i + 2000));
+        for (const m of matches) users.set(m.phone, m.user);
+      }
+      const byName = (a: PhoneRow, b: PhoneRow) => a.name.localeCompare(b.name);
+      setRows(phones.map((phone) => ({ phone, name: names.get(phone)!, user: users.get(phone) })).sort(byName));
+    } catch (e) {
+      toast(errorText(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (contactsAvailable() && hasContactsPermission()) void load(false);
+  }, []);
+
+  return { rows, loading, load };
+}
+
+/**
+ * Below your contacts: a button to allow access to the phone's contacts,
+ * then those contacts — the ones on Chaty to chat with, the others faded.
+ */
+function PhoneContacts({
+  q,
+  skip,
+  busy,
+  onOpen,
+}: {
+  q: string;
+  skip: Set<number>;
+  busy: boolean;
+  onOpen: (u: User, phone: string) => void;
+}) {
+  const { rows, loading, load } = usePhoneContacts();
+  if (!contactsAvailable()) return null;
+
+  if (!rows) {
+    if (q.trim()) return null;
+    return (
+      <button className="user-row contacts-allow" disabled={loading} onClick={() => void load(true)}>
+        <span className="round-icon">
+          <BookUser size={22} />
+        </span>
+        <div className="user-row-body">
+          <span className="user-name">{loading ? 'Checking your contacts…' : 'Find your contacts on Chaty'}</span>
+          <span className="user-sub">Allow access to your phone's contacts</span>
+        </div>
+      </button>
+    );
+  }
+
+  const needle = q.trim().toLowerCase();
+  const digits = normalizePhone(q) ?? q.replace(/\D/g, '');
+  const shown = rows.filter(
+    (r) => !(r.user && skip.has(r.user.id)) && (!needle || r.name.toLowerCase().includes(needle) || (digits.length >= 3 && r.phone.includes(digits))),
+  );
+  const on = shown.filter((r) => r.user);
+  const off = shown.filter((r) => !r.user);
+  return (
+    <>
+      {on.length > 0 && <h3 className="section-title">Contacts on Chaty</h3>}
+      {on.map((r) => (
+        <UserRow key={r.phone} u={r.user!} onClick={() => onOpen(r.user!, r.phone)} disabled={busy} />
+      ))}
+      {off.length > 0 && <h3 className="section-title">Not on Chaty yet</h3>}
+      {off.map((r) => (
+        <div key={r.phone} className="user-row off" aria-disabled="true">
+          <Avatar name={r.name} size={48} ring={false} />
+          <div className="user-row-body">
+            <span className="user-name" dir="auto">
+              {r.name}
+            </span>
+            <span className="user-sub" dir="ltr">
+              {r.phone}
+            </span>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export function NewChatScreen() {
   const groups = useConfig((s) => s.features.groups);
   const [q, setQ] = useState('');
   const users = useUserSearch(q);
   const [opening, setOpening] = useState(0);
 
-  async function open(u: User) {
+  async function open(u: User, query = q.trim()) {
     setOpening(u.id);
     try {
-      const c = await api.openDirect(u.id, q.trim());
+      const c = await api.openDirect(u.id, query);
       addConversation(c);
       navigate(`/chat/${c.id}`, { replace: true });
     } catch (e) {
@@ -159,6 +274,7 @@ export function NewChatScreen() {
           users={users}
           render={(u) => <UserRow key={u.id} u={u} onClick={() => open(u)} disabled={!!opening} />}
         />
+        <PhoneContacts q={q} skip={new Set(users?.map((u) => u.id))} busy={!!opening} onOpen={(u, phone) => open(u, phone)} />
       </div>
     </div>
   );

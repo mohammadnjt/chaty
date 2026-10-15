@@ -5,6 +5,7 @@ import Scenery from '../components/Scenery';
 import { useTheme } from '../lib/theme';
 import { api, ApiError, errorText, type PublicConfig } from '../lib/api';
 import { getServerUrl, isNativeShell, normalizeServerUrl, setServerUrl } from '../lib/config';
+import { isMobile, normalizePhone } from '../lib/phone';
 import { login, register } from '../store/auth';
 
 export default function AuthScreen() {
@@ -29,6 +30,11 @@ export default function AuthScreen() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    const mobile = normalizePhone(phone);
+    if (!isMobile(mobile)) {
+      setError('Enter an 11-digit mobile number, e.g. 09123456789.');
+      return;
+    }
     if (isNativeShell && !server.trim()) {
       setError('Enter your server address first.');
       return;
@@ -41,8 +47,8 @@ export default function AuthScreen() {
     if (normalized !== getServerUrl()) setServerUrl(normalized);
     setBusy(true);
     try {
-      if (mode === 'login') await login(phone, password);
-      else if (await register(phone, name.trim(), password)) {
+      if (mode === 'login') await login(mobile, password);
+      else if (await register(mobile, name.trim(), password)) {
         setPending(true);
         setBusy(false);
       }
@@ -103,7 +109,7 @@ export default function AuthScreen() {
 
             <input
               className="field ltr"
-              placeholder="Phone number, e.g. 0912 345 6789"
+              placeholder="Mobile number, e.g. 0912 345 6789"
               type="tel"
               inputMode="tel"
               autoComplete="tel"

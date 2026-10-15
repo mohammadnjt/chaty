@@ -3,7 +3,6 @@ import { pushEnabled } from './push';
 
 interface NitronBridge {
   showNotification?: (title: string, message: string) => void;
-  requestCameraPermission?: () => void;
 }
 
 const bridge = () => (window as unknown as { Nitron?: NitronBridge }).Nitron;
@@ -22,14 +21,6 @@ export function notify(title: string, message: string) {
     }
   } catch {
     /* notifications are best effort */
-  }
-}
-
-export function requestMediaPermission() {
-  try {
-    bridge()?.requestCameraPermission?.();
-  } catch {
-    /* not in the shell */
   }
 }
 
@@ -89,14 +80,15 @@ export const callAudio = {
 interface ChatyAppBridge {
   hasPermissions: (names: string) => boolean;
   requestPermissions: (names: string) => void;
+  contacts?: () => string;
 }
 
 const appBridge = () => (window as unknown as { ChatyApp?: ChatyAppBridge }).ChatyApp;
 
 /**
  * In the Android app, gets Android's permission for the microphone (and
- * camera) before a call uses them: asking from inside getUserMedia can leave
- * it waiting forever. Resolves whether the microphone may be used; elsewhere
+ * camera) the moment a call or a voice message needs them, never before:
+ * asking from inside getUserMedia can leave it waiting forever. Resolves whether the microphone may be used; elsewhere
  * the browser asks by itself, so it's always true.
  */
 export async function ensureMediaPermission(camera: boolean): Promise<boolean> {
@@ -128,6 +120,42 @@ export function askPermissions(names: string): Promise<void> {
     window.addEventListener('chaty-permissions', done);
     app.requestPermissions(names);
   });
+}
+
+export interface PhoneContact {
+  name: string;
+  phone: string;
+}
+
+/** Whether this is the Android app, which can read the phone's contacts. */
+export const contactsAvailable = () => typeof appBridge()?.contacts === 'function';
+
+export function hasContactsPermission(): boolean {
+  try {
+    return !!appBridge()?.hasPermissions('READ_CONTACTS');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The phone's contacts, one entry per number; null if they can't be read.
+ * With ask, shows Android's prompt first when needed.
+ */
+export async function readContacts(ask: boolean): Promise<PhoneContact[] | null> {
+  const app = appBridge();
+  if (!app?.contacts) return null;
+  if (!hasContactsPermission()) {
+    if (!ask) return null;
+    await askPermissions('READ_CONTACTS');
+    if (!hasContactsPermission()) return null;
+  }
+  try {
+    const raw = app.contacts();
+    return raw ? (JSON.parse(raw) as PhoneContact[]) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function vibrate(pattern: number | number[]) {

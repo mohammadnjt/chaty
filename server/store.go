@@ -256,6 +256,12 @@ func fullUser(u *UserRec) User {
 var usernameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{3,31}$`)
 
 // normalizeUsername accepts "@Name" or "name"; returns the lookup key.
+// isMobile reports whether a normalized number is an 11-digit mobile number
+// (09123456789), the only kind accounts are made with.
+func isMobile(phone string) bool {
+	return len(phone) == 11 && strings.HasPrefix(phone, "09")
+}
+
 func normalizeUsername(in string) (string, bool) {
 	u := strings.TrimPrefix(strings.TrimSpace(in), "@")
 	return strings.ToLower(u), usernameRe.MatchString(u)
@@ -751,6 +757,32 @@ func (s *Store) findExactL(q string, viewer int64) *UserRec {
 		return nil
 	}
 	return u
+}
+
+// MatchPhones finds who, among the numbers in the viewer's address book, is
+// on Chaty and may be contacted, keyed by normalized number. The same rules
+// as finding someone by their number apply: people who turned off "find me
+// by phone number" stay hidden, except from admins.
+func (s *Store) MatchPhones(phones []string, viewer int64) map[string]User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	admin := s.isAdminL(viewer)
+	out := map[string]User{}
+	for _, raw := range phones {
+		phone, ok := normalizePhone(raw)
+		if !ok {
+			continue
+		}
+		if _, done := out[phone]; done {
+			continue
+		}
+		u := s.byPhone[phone]
+		if u == nil || u.ID == viewer || u.Status != "active" || s.blocks[u.ID][viewer] || (u.HidePhoneSearch && !admin) {
+			continue
+		}
+		out[phone] = s.viewUserL(u, viewer)
+	}
+	return out
 }
 
 // CanReach reports whether viewer may start a chat with target: they already

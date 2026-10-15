@@ -9,10 +9,12 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.ContactsContract;
 import android.view.View;
 import android.view.animation.AlphaAnimation;
 import android.webkit.MimeTypeMap;
@@ -37,6 +39,7 @@ import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -330,6 +333,30 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void clearNotification(String tag) {
             if (tag != null) ChatyMessagingService.cancel(MainActivity.this, tag);
+        }
+
+        /**
+         * The phone's address book as JSON, one entry per number:
+         * [{"name": "Sara", "phone": "+98 912 …"}]; "" without the permission.
+         */
+        @JavascriptInterface
+        public String contacts() {
+            if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission("android.permission.READ_CONTACTS") != PackageManager.PERMISSION_GRANTED) return "";
+            JSONArray out = new JSONArray();
+            String[] columns = {ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER};
+            try (Cursor c = getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, columns, null, null, null)) {
+                while (c != null && c.moveToNext()) {
+                    String number = c.getString(1);
+                    if (number == null) continue;
+                    JSONObject o = new JSONObject();
+                    o.put("name", c.getString(0) == null ? "" : c.getString(0));
+                    o.put("phone", number);
+                    out.put(o);
+                }
+            } catch (Exception e) {
+                return "[]";
+            }
+            return out.toString();
         }
 
         /** Shows Android's prompt; the page hears back through a "chaty-permissions" event. */

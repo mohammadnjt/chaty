@@ -133,6 +133,9 @@ export const api = {
   changePassword: (current: string, next: string) => request('POST', '/api/me/password', { current, next }),
   config: () => request<AppConfig>('GET', '/api/config'),
   users: (q = '') => request<User[]>('GET', '/api/users?q=' + encodeURIComponent(q)),
+  /** Which of these numbers (from the phone's contacts) belong to people on Chaty. */
+  matchContacts: (phones: string[]) =>
+    request<{ matches: { phone: string; user: User }[] }>('POST', '/api/contacts/match', { phones }),
   conversations: () => request<Conversation[]>('GET', '/api/conversations'),
   conversation: (id: number) => request<Conversation>('GET', `/api/conversations/${id}`),
   /** query = the phone number / @ID used to find someone new */

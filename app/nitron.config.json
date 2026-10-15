@@ -15,6 +15,7 @@
     "BLUETOOTH_CONNECT",
     "VIBRATE",
     "POST_NOTIFICATIONS",
+    "READ_CONTACTS",
     "WAKE_LOCK"
   ],
   "icon": {
