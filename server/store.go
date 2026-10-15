@@ -565,6 +565,36 @@ func (s *Store) putMsg(m *MsgRec)       { s.put("msg", strconv.FormatInt(m.ID, 1
 func (s *Store) putMember(m *MemberRec) { s.put("member", memberKey(m.ConvID, m.UserID), m) }
 func (s *Store) putConv(c *ConvRec)     { s.put("conv", strconv.FormatInt(c.ID, 10), c) }
 
+// UploadsInUse names the files in the uploads folder that something points
+// at: messages (deleted ones too, which admins still see), photos of people
+// and groups, and stories.
+func (s *Store) UploadsInUse() map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	used := map[string]bool{}
+	add := func(url string) {
+		if name, ok := strings.CutPrefix(url, "/uploads/"); ok {
+			if i := strings.IndexAny(name, "?#"); i >= 0 {
+				name = name[:i]
+			}
+			used[name] = true
+		}
+	}
+	for _, u := range s.users {
+		add(u.Avatar)
+	}
+	for _, c := range s.convs {
+		add(c.Avatar)
+	}
+	for _, m := range s.msgByID {
+		add(m.MediaURL)
+	}
+	for _, st := range s.stories {
+		add(st.URL)
+	}
+	return used
+}
+
 // SwitchPersister copies everything into p and makes it the active backend.
 func (s *Store) SwitchPersister(p Persister, driver string) error {
 	s.mu.Lock()

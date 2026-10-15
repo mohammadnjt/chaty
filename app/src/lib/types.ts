@@ -138,6 +138,15 @@ export interface AdminOverview {
   };
   online: number;
   storage: { describe: string; error: string };
+  /** Uploaded files, the disk they're on, the daily cleanup and the nightly backup (scripts/backup.sh). */
+  files: {
+    count: number;
+    bytes: number;
+    diskFree?: number;
+    diskTotal?: number;
+    cleanup: { at: number; removed: number; bytes: number } | null;
+    backup: { at: number; ok: boolean; error: string; remote: string } | null;
+  };
   turn: { running: boolean; error: string };
   settings: Settings;
 }

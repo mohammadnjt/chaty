@@ -197,6 +197,7 @@ func main() {
 	srv.push = newPusher(env("FIREBASE_CREDENTIALS", filepath.Join(cfg.DataDir, "firebase-service-account.json")), store)
 	srv.hub.push = srv.push
 	go srv.expireStories()
+	go srv.cleanUploadsDaily()
 	httpSrv := &http.Server{Handler: srv.routes(), ReadHeaderTimeout: 15 * time.Second}
 	errc := make(chan error, 2)
 

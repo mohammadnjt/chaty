@@ -1,9 +1,9 @@
-import { Check, ChevronLeft, Database, KeyRound, Package, RefreshCw, Shield, ShieldOff, Upload, UserCheck, UserX, Users } from 'lucide-react';
+import { Check, ChevronLeft, Database, HardDrive, KeyRound, Package, RefreshCw, Shield, ShieldOff, Upload, UserCheck, UserX, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import Avatar from '../components/Avatar';
 import Toggle from '../components/Toggle';
 import { api, errorText, type AndroidApp } from '../lib/api';
-import { formatBytes, formatListTime } from '../lib/format';
+import { formatAgo, formatBytes, formatListTime } from '../lib/format';
 import { goBack } from '../lib/router';
 import { socket } from '../lib/socket';
 import type { AdminOverview, Features, Settings, User } from '../lib/types';
@@ -211,6 +211,65 @@ function SaveBar({ dirty, busy, onSave }: { dirty: boolean; busy: boolean; onSav
       <button className="btn btn-primary wide" disabled={!dirty || busy} onClick={onSave}>
         <Check size={18} /> {busy ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
       </button>
+    </div>
+  );
+}
+
+const DAY = 86_400_000;
+
+/** Uploaded files, room left on the disk, the daily cleanup and the nightly backup. */
+function FilesCard({ files }: { files: AdminOverview['files'] }) {
+  const { diskFree, diskTotal, cleanup, backup } = files;
+  const lowDisk = diskFree !== undefined && diskFree < 5 * 1024 ** 3;
+  const backupLate = backup?.ok && Date.now() - backup.at > 2 * DAY;
+  return (
+    <div className="card form-card">
+      <div className="storage-now">
+        <HardDrive size={20} />
+        <div>
+          <b>Files</b>
+        </div>
+      </div>
+      <div className="files-rows">
+        <div>
+          <span>Uploaded files</span>
+          <span>
+            {files.count} · {formatBytes(files.bytes)}
+          </span>
+        </div>
+        {diskFree !== undefined && diskTotal !== undefined && (
+          <div>
+            <span>Disk</span>
+            <span className={lowDisk ? 'files-bad' : undefined}>
+              {formatBytes(diskFree)} free of {formatBytes(diskTotal)}
+            </span>
+          </div>
+        )}
+        <div>
+          <span>Cleanup</span>
+          <span>
+            {cleanup
+              ? `${formatAgo(cleanup.at)}: removed ${cleanup.removed} unused file${cleanup.removed === 1 ? '' : 's'}${cleanup.removed ? ` (${formatBytes(cleanup.bytes)})` : ''}`
+              : 'Daily, from 10 minutes after the server starts'}
+          </span>
+        </div>
+        <div>
+          <span>Backup</span>
+          <span className={!backup || !backup.ok || backupLate ? 'files-bad' : 'files-good'}>
+            {!backup
+              ? 'Not set up'
+              : backup.ok
+                ? `${backupLate ? 'Last one ' : '✓ '}${formatAgo(backup.at)} to ${backup.remote}`
+                : `Failed ${formatAgo(backup.at)}`}
+          </span>
+        </div>
+      </div>
+      {lowDisk && <p className="form-error">The disk is almost full. Free some space or move the server to a bigger disk.</p>}
+      {backup && !backup.ok && backup.error && <p className="form-error">{backup.error}</p>}
+      <p className="muted small">
+        Files nothing uses anymore (never-sent uploads, replaced photos) are removed once a day; files of deleted messages
+        stay, since admins still see those messages.
+      </p>
     </div>
   );
 }
@@ -570,7 +629,12 @@ export default function AdminScreen() {
           </>
         )}
 
-        {tab === 'storage' && overview && <StorageTab overview={overview} reload={reload} />}
+        {tab === 'storage' && overview && (
+          <>
+            <StorageTab overview={overview} reload={reload} />
+            {overview.files && <FilesCard files={overview.files} />}
+          </>
+        )}
 
         {tab === 'general' && draft && (
           <>

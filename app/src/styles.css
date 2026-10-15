@@ -3434,6 +3434,38 @@ button.user-row:active {
   padding: 12px 16px 4px;
 }
 
+.files-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.files-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.files-rows > div > span:first-child {
+  color: var(--text-2);
+  flex: none;
+}
+
+.files-rows > div > span:last-child {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.files-good {
+  color: var(--ok);
+}
+
+.files-bad {
+  color: var(--danger);
+}
+
 .storage-now {
   display: flex;
   gap: 12px;

@@ -40,6 +40,7 @@ func (s *Server) adminOverview(w http.ResponseWriter, r *http.Request, me UserRe
 		"stats":    s.store.Stats(),
 		"online":   s.hub.onlineCount(),
 		"storage":  map[string]any{"describe": storage, "error": storageErr},
+		"files":    s.filesOverview(),
 		"turn":     map[string]any{"running": turnRunning, "error": turnErr},
 		"settings": s.settings.Get(),
 	})

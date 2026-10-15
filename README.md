@@ -181,6 +181,34 @@ npm run apk     # بیلد وب، Nitron و بعد بخش نیتیو Chaty → a
 
 اگر دیتابیس در دسترس نبود و سرور بالا نیامد، در `server/.env` بنویسید `STORAGE_DRIVER=file`.
 
+فایل‌های آپلودشده‌ای که دیگر به چیزی وصل نیستند (ارسال‌نشده، عکس پروفایلِ عوض‌شده) روزی یک بار پاک می‌شوند. فایل پیام‌های حذف‌شده می‌ماند، چون ادمین‌ها آن پیام‌ها را هنوز می‌بینند.
+
+## بکاپ (Google Drive)
+
+هر شب ساعت ۳:۳۰ (وقت تهران) `scripts/backup.sh` کل `files/` را با rclone در Google Drive کپی می‌کند. وضعیت آخرین بکاپ در پنل ادمین (تب Storage، کارت Files) دیده می‌شود.
+
+| در Drive | محتوا |
+|---|---|
+| `Chaty-backup/current/` | آخرین بکاپ |
+| `Chaty-backup/archive/<تاریخ>/` | نسخهٔ قبلیِ فایل‌هایی که آن شب عوض یا پاک شدند، یعنی بکاپِ روزِ قبل از آن تاریخ. ۳۰ روز می‌ماند. |
+
+روی سرور: cron در `/etc/cron.d/chaty-backup`، لاگ در `/var/log/chaty-backup.log`، اتصال Drive (remote `gdrive`) در `/root/.config/rclone/rclone.conf`. بکاپ دستی: `scripts/backup.sh`
+
+### برگرداندن
+
+1. Chaty را در BAS متوقف کنید.
+2. آخرین بکاپ را برگردانید:
+   ```bash
+   rclone copy gdrive:Chaty-backup/current /root/bas/apps/chaty/files
+   ```
+   یا دادهٔ یک روز مشخص (مثلاً بکاپ ۱۹ اکتبر، ساعت ۳:۳۰):
+   ```bash
+   rclone copy gdrive:Chaty-backup/archive/2026-10-20/data /root/bas/apps/chaty/files/data
+   ```
+3. Chaty را دوباره اجرا کنید.
+
+روی سرور جدید: `apt install rclone`، بعد روی یک کامپیوتر با مرورگر `rclone authorize drive` بزنید (با همان حساب Google) و remote `gdrive` را با `scope = drive.file` و توکنِ گرفته‌شده در `rclone.conf` بسازید.
+
 ## ساختار پروژه
 
 ```
@@ -192,11 +220,13 @@ server/   بکند Go
   calls.go      سیگنالینگ تماس
   store.go      مدل داده در حافظه
   persist.go    ذخیره‌سازی (JSONL / SQLite / PostgreSQL / MySQL)
+  files.go      پاکسازی فایل‌های بی‌استفاده و وضعیت فایل‌ها/بکاپ برای پنل
   settings.go   تنظیمات قابل تغییر از پنل
   net.go        TURN داخلی و گواهی self-signed
 app/      فرانت React + Vite (و nitron.config.json)
   android/      بخش نیتیو اندروید (جاوا) و build_apk.py که APK را می‌سازد
   src/call/     موتور تماس (WebRTC + رلهٔ سرور)
   src/screens/  صفحه‌ها (چت‌ها، چت، تماس‌ها، استاتوس، تنظیمات، ادمین)
+scripts/  dev.mjs (اجرای توسعه)، backup.sh (بکاپ شبانه)
 files/    داده‌ها و آپلودها
 ```
