@@ -1211,21 +1211,21 @@ var inlineTypes = map[string]string{
 	".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
 	".bmp": "image/bmp", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/ogg", ".mp3": "audio/mpeg",
 	".m4a": "audio/mp4", ".aac": "audio/aac", ".wav": "audio/wav", ".webm": "video/webm", ".mp4": "video/mp4",
-	".m4v": "video/mp4", ".mov": "video/quicktime",
+	".m4v": "video/mp4", ".mov": "video/quicktime", ".avif": "image/avif",
 }
 
 var mimeExt = map[string]string{
 	"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp",
 	"audio/webm": ".webm", "video/webm": ".webm", "audio/ogg": ".ogg", "application/ogg": ".ogg",
 	"audio/mpeg": ".mp3", "audio/mp4": ".m4a", "video/mp4": ".mp4", "audio/aac": ".aac", "audio/wav": ".wav",
-	"video/quicktime": ".mov", "application/pdf": ".pdf",
+	"video/quicktime": ".mov", "application/pdf": ".pdf", "image/avif": ".avif",
 }
 
 var extRe = regexp.MustCompile(`^\.[a-z0-9]{1,10}$`)
 
 func uploadCategory(ext string) string {
 	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif":
 		return "image"
 	case ".ogg", ".oga", ".opus", ".mp3", ".m4a", ".aac", ".wav", ".webm":
 		return "audio"
@@ -1309,6 +1309,7 @@ func (s *Server) receiveFile(w http.ResponseWriter, r *http.Request, refuse func
 		httpError(w, http.StatusBadRequest, "upload failed or file is too large")
 		return savedFile{}, false
 	}
+	queueAVIF(name)
 	return savedFile{URL: "/uploads/" + name, Name: header.Filename, Ext: ext, Size: size}, true
 }
 
@@ -1325,6 +1326,9 @@ func uploadsHandler(dir string) http.Handler {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Cache-Control", "public, max-age=31536000, immutable")
+		if serveAVIF(w, r, dir, name) {
+			return
+		}
 		if ct, ok := inlineTypes[filepath.Ext(name)]; ok {
 			h.Set("Content-Type", ct)
 		} else {

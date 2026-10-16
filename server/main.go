@@ -198,6 +198,7 @@ func main() {
 	srv.hub.push = srv.push
 	go srv.expireStories()
 	go srv.cleanUploadsDaily()
+	go srv.avifWorker()
 	httpSrv := &http.Server{Handler: srv.routes(), ReadHeaderTimeout: 15 * time.Second}
 	errc := make(chan error, 2)
 

@@ -52,11 +52,16 @@ func (s *Server) cleanUploads() {
 		log.Printf("uploads: nothing refers to any of %d files; leaving them", len(entries))
 		return
 	}
+	// An AVIF copy (avif.go) stays as long as its picture does.
+	copies := map[string]bool{}
+	for name := range used {
+		copies[avifName(name)] = true
+	}
 	res := cleanupResult{At: nowMs()}
 	cutoff := time.Now().Add(-uploadGrace)
 	for _, e := range entries {
 		name := e.Name()
-		if !e.Type().IsRegular() || !uploadNameRe.MatchString(name) || used[name] {
+		if !e.Type().IsRegular() || !uploadNameRe.MatchString(name) || used[name] || copies[name] {
 			continue
 		}
 		info, err := e.Info()

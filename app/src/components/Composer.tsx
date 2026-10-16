@@ -1,11 +1,12 @@
 import { Forward, Mic, Paperclip, Pencil, Reply, SendHorizontal, Smile, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { formatDuration } from '../lib/format';
+import { MAX_TEXT, splitLongText } from '../lib/markdown';
 import { ensureMediaPermission } from '../lib/native';
 import { socket } from '../lib/socket';
 import type { Message } from '../lib/types';
 import { errorText } from '../lib/api';
-import { editMessage, forwardWithComment, previewOf, sendMessage } from '../store/chat';
+import { editMessage, forwardWithComment, previewOf, sendMessage, sendTexts } from '../store/chat';
 import { useConfig } from '../store/config';
 import { pauseVoice } from '../store/player';
 import { toast } from '../store/toast';
@@ -143,6 +144,10 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
 
   function submit() {
     const body = text.trim();
+    if (editing && body.length > MAX_TEXT) {
+      toast(`An edited message can have up to ${MAX_TEXT} characters`);
+      return;
+    }
     if (editing) {
       if (body !== editing.body && (body || editing.type !== 'text')) void editMessage(editing, body);
       setText('');
@@ -156,7 +161,9 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
       return;
     }
     if (!body) return;
-    sendMessage(conversationId, { type: 'text', body, replyTo });
+    const parts = splitLongText(body);
+    if (parts.length > 1) sendTexts(conversationId, parts, replyTo ?? undefined);
+    else sendMessage(conversationId, { type: 'text', body, replyTo });
     setText('');
     onDone();
     lastTyping.current = 0;
@@ -314,6 +321,9 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
             <X size={20} />
           </button>
         </div>
+      )}
+      {!editing && !recording && text.length > MAX_TEXT && (
+        <div className="composer-note">Long message: it goes as {splitLongText(text.trim()).length} messages</div>
       )}
       <div className="composer">
         {recording ? (

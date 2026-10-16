@@ -3,8 +3,10 @@ import { memo, useRef, useState } from 'react';
 import { mediaUrl } from '../lib/config';
 import { formatBytes, formatTime } from '../lib/format';
 import type { Message } from '../lib/types';
+import { looksLikeMarkdown } from '../lib/markdown';
 import { previewOf } from '../store/chat';
 import AudioMessage from './AudioMessage';
+import RichText, { Linkified } from './RichText';
 
 interface Props {
   msg: Message;
@@ -29,25 +31,6 @@ function Ticks({ msg, read }: { msg: Message; read: boolean }) {
   if (msg.status === 'sending' || !msg.id) return <Clock size={12} />;
   if (read) return <CheckCheck size={15} className="tick-read" />;
   return <Check size={15} />;
-}
-
-const URL_RE = /(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?])/g;
-
-function Linkified({ text }: { text: string }) {
-  const parts = text.split(URL_RE);
-  return (
-    <>
-      {parts.map((p, i) =>
-        i % 2 ? (
-          <a key={i} href={p} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-            {p}
-          </a>
-        ) : (
-          p
-        ),
-      )}
-    </>
-  );
 }
 
 function fileHref(m: Message) {
@@ -116,6 +99,7 @@ function MessageBubble(p: Props) {
   const src = msg.localUrl || mediaUrl(msg.mediaUrl);
   const deleted = !!msg.deletedAt; // deleted for everyone; only admins see it, marked
   const sending = !msg.id && msg.status === 'sending';
+  const rich = msg.type === 'text' && looksLikeMarkdown(msg.body); // formatted Markdown gets a wider bubble
 
   const meta = (
     <span className="msg-meta">
@@ -139,7 +123,7 @@ function MessageBubble(p: Props) {
   return (
     <div
       ref={row}
-      className={`msg-row ${mine ? 'out' : 'in'} ${p.tail ? 'tail' : ''} ${p.highlight ? 'flash' : ''}`}
+      className={`msg-row ${mine ? 'out' : 'in'} ${p.tail ? 'tail' : ''} ${p.highlight ? 'flash' : ''} ${rich ? 'rich' : ''}`}
       data-mid={msg.id || undefined}
       {...handlers}
       onDoubleClick={() => msg.id && !deleted && p.onReply(msg)}
@@ -212,8 +196,8 @@ function MessageBubble(p: Props) {
           )}
 
           {msg.type === 'text' ? (
-            <div className="msg-text" dir="auto">
-              <Linkified text={msg.body} />
+            <div className={`msg-text ${rich ? 'msg-md' : ''}`} dir="auto">
+              <RichText text={msg.body} />
               {meta}
             </div>
           ) : (

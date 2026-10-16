@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -351,10 +352,42 @@ func pushPreview(m Message) string {
 	case "file":
 		return orDefault(m.Body, "📎 "+m.FileName)
 	}
-	if r := []rune(m.Body); len(r) > 180 {
+	body := plainMarkdown(m.Body)
+	if r := []rune(body); len(r) > 180 {
 		return string(r[:180]) + "…"
 	}
-	return m.Body
+	return body
+}
+
+// Markdown signs that would show as clutter in a notification (the app's
+// plainText in lib/markdown.ts does the same for previews).
+var (
+	mdFence = regexp.MustCompile(`(?m)^[ \t]*(` + "```" + `|~~~).*$`)
+	mdRule  = regexp.MustCompile(`(?m)^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*$`)
+	mdRow   = regexp.MustCompile(`(?m)^[ \t]*\|(.*)\|[ \t]*$`)
+	mdLead  = regexp.MustCompile(`(?m)^[ \t]{0,3}(#{1,6}|>)[ \t]?`)
+	mdLink  = regexp.MustCompile(`\[([^\]\n]+)\]\([^)\s]+\)`)
+	mdMarks = strings.NewReplacer("**", "", "__", "", "~~", "", "`", "")
+	mdGaps  = regexp.MustCompile(`\n{2,}`)
+)
+
+func plainMarkdown(s string) string {
+	if !strings.ContainsAny(s, "*_~`#>|[") {
+		return s
+	}
+	s = mdFence.ReplaceAllString(s, "")
+	s = mdRule.ReplaceAllString(s, "")
+	s = mdRow.ReplaceAllStringFunc(s, func(row string) string {
+		cells := strings.Split(strings.Trim(strings.TrimSpace(row), "|"), "|")
+		for i := range cells {
+			cells[i] = strings.TrimSpace(cells[i])
+		}
+		return strings.Join(cells, " · ")
+	})
+	s = mdLead.ReplaceAllString(s, "")
+	s = mdLink.ReplaceAllString(s, "$1")
+	s = mdMarks.Replace(s)
+	return strings.TrimSpace(mdGaps.ReplaceAllString(s, "\n"))
 }
 
 func orDefault(s, def string) string {

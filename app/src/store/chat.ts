@@ -6,6 +6,7 @@ import { clearChatNotification } from '../lib/push';
 import { playMessage } from '../lib/sounds';
 import { appVisible } from '../lib/visibility';
 import type { Conversation, Message, MessageType, User } from '../lib/types';
+import { plainText, splitLongText } from '../lib/markdown';
 import { toast } from './toast';
 
 interface Presence {
@@ -72,7 +73,7 @@ export function previewOf(m: Pick<Message, 'type' | 'body' | 'fileName'> | null 
     case 'deleted':
       return '🚫 Message deleted';
   }
-  return m.body;
+  return plainText(m.body);
 }
 
 export function nameOf(userId: number, conv?: Conversation): string {
@@ -356,6 +357,28 @@ export interface Draft {
 const drafts = new Map<string, Draft>(); // clientId -> what to resend
 
 export function sendMessage(convId: number, draft: Draft) {
+  void deliver(convId, queue(convId, draft));
+}
+
+/**
+ * A text too long for one message, in several (see splitLongText), sent one
+ * after another so they arrive in order; if one fails, the rest wait as
+ * failed too, to retry.
+ */
+export function sendTexts(convId: number, bodies: string[], replyTo?: Message) {
+  const ids = bodies.map((body, i) => queue(convId, { type: 'text', body, replyTo: i ? undefined : replyTo }));
+  void (async () => {
+    for (let i = 0; i < ids.length; i++) {
+      if (!(await deliver(convId, ids[i]))) {
+        for (const rest of ids.slice(i + 1)) patchPending(convId, rest, { status: 'failed' });
+        return;
+      }
+    }
+  })();
+}
+
+/** Shows the message as sending; deliver() then sends it. */
+function queue(convId: number, draft: Draft): string {
   const clientId = uid();
   drafts.set(clientId, draft);
   const r = draft.replyTo;
@@ -382,7 +405,7 @@ export function sendMessage(convId: number, draft: Draft) {
       conversations: conv ? { ...s.conversations, [convId]: { ...conv, lastMessage: pending } } : s.conversations,
     };
   });
-  void deliver(convId, clientId);
+  return clientId;
 }
 
 export function retryMessage(convId: number, clientId: string) {
@@ -406,9 +429,10 @@ function patchPending(convId: number, clientId: string, patch: Partial<Message>)
   }));
 }
 
-async function deliver(convId: number, clientId: string) {
+/** Sends a queued message; whether it went. */
+async function deliver(convId: number, clientId: string): Promise<boolean> {
   const draft = drafts.get(clientId);
-  if (!draft) return;
+  if (!draft) return false;
   try {
     const payload: SendPayload = {
       type: draft.type,
@@ -432,9 +456,11 @@ async function deliver(convId: number, clientId: string) {
     const saved = await api.send(convId, payload);
     drafts.delete(clientId);
     receiveMessage(saved);
+    return true;
   } catch (e) {
     patchPending(convId, clientId, { status: 'failed' });
     toast(errorText(e));
+    return false;
   }
 }
 
@@ -492,7 +518,11 @@ export async function forwardMessage(msg: Message, conversationIds: number[]) {
 /** Forwards msg to the chats, each after the comment written with it (if any). */
 export async function forwardWithComment(msg: Message, conversationIds: number[], comment = '') {
   const body = comment.trim();
-  if (body) for (const id of conversationIds) receiveMessage(await api.send(id, { type: 'text', body, clientId: uid() }));
+  if (body) {
+    for (const id of conversationIds) {
+      for (const part of splitLongText(body)) receiveMessage(await api.send(id, { type: 'text', body: part, clientId: uid() }));
+    }
+  }
   return forwardMessage(msg, conversationIds);
 }
 
