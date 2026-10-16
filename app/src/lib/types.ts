@@ -38,6 +38,8 @@ export interface Message {
   reply?: ReplyPreview;
   forwardedFrom?: string;
   reactions?: Record<string, number[]>;
+  /** Checklist items ("- [ ] …") as people in the chat left them, by item number. */
+  checks?: Record<string, { on: boolean; by: number; at: number }>;
   deletedAt?: number; // deleted for everyone: only admins still get it
   editedAt?: number;
   createdAt: number;
@@ -54,7 +56,9 @@ export interface Conversation {
   avatar: string;
   members: User[];
   lastMessage: Message | null;
-  pinned: Message | null;
+  pinned: Message | null; // the latest pin
+  /** Every pinned message, oldest first (older servers send only `pinned`). */
+  pins?: Message[];
   unread: number;
   reads: Record<string, number>;
   createdAt: number;

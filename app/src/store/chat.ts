@@ -237,6 +237,7 @@ export function updateMessage(msg: Message) {
           ...conv,
           lastMessage: conv.lastMessage?.id === msg.id ? msg : conv.lastMessage,
           pinned: conv.pinned?.id === msg.id ? (msg.deletedAt ? null : msg) : conv.pinned,
+          pins: conv.pins?.flatMap((p) => (p.id !== msg.id ? [p] : msg.deletedAt ? [] : [msg])),
         },
       };
     }
@@ -262,9 +263,12 @@ export function hideMessage(d: { conversationId: number; id: number; deleted?: b
   if (get().conversations[d.conversationId]?.lastMessage?.id === d.id) void ensureConversation(d.conversationId, true);
 }
 
-export function setPinned(d: { conversationId: number; pinned: Message | null }) {
-  patchConversation(d.conversationId, { pinned: d.pinned });
+export function setPinned(d: { conversationId: number; pinned: Message | null; pins?: Message[] }) {
+  patchConversation(d.conversationId, { pinned: d.pinned, pins: d.pins ?? (d.pinned ? [d.pinned] : []) });
 }
+
+/** A chat's pinned messages, oldest first. */
+export const pinsOf = (c?: Conversation): Message[] => c?.pins ?? (c?.pinned ? [c.pinned] : []);
 
 function announce(c: Conversation, msg: Message) {
   if (c.muted) return;
@@ -490,6 +494,17 @@ export async function deleteMessage(msg: Message, forAll: boolean) {
   }
 }
 
+/** Ticks or unticks item n of a checklist in msg. */
+export async function checkItem(msg: Message, item: number, on: boolean) {
+  updateMessage({ ...msg, checks: { ...msg.checks, [item]: { on, by: get().me, at: Date.now() } } });
+  try {
+    updateMessage(await api.check(msg.id, item, on));
+  } catch (e) {
+    updateMessage(msg);
+    toast(errorText(e));
+  }
+}
+
 export async function reactTo(msg: Message, emoji: string) {
   const me = get().me;
   const next: Record<string, number[]> = {};
@@ -574,14 +589,19 @@ export async function setBlocked(convId: number, userId: number, blocked: boolea
   }
 }
 
-export async function pinMessage(convId: number, msg: Message | null) {
+/** Pins msg (on) or takes it out of the chat's pins. */
+export async function pinMessage(convId: number, msg: Message, on: boolean) {
   const conv = get().conversations[convId];
-  const prev = conv?.pinned ?? null;
-  setPinned({ conversationId: convId, pinned: msg });
+  const prev = pinsOf(conv);
+  const next = prev.filter((p) => p.id !== msg.id);
+  if (on) next.push(msg);
+  next.sort((a, b) => a.id - b.id);
+  const show = (pins: Message[]) => setPinned({ conversationId: convId, pinned: pins[pins.length - 1] ?? null, pins });
+  show(next);
   try {
-    await api.pin(convId, msg?.id ?? 0);
+    await api.pin(convId, msg.id, !on);
   } catch (e) {
-    setPinned({ conversationId: convId, pinned: prev });
+    show(prev);
     toast(errorText(e));
   }
 }

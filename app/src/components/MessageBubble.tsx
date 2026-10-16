@@ -2,9 +2,9 @@ import { Check, CheckCheck, CircleAlert, Clock, Download, FileText, Forward, Rep
 import { memo, useRef, useState } from 'react';
 import { mediaUrl } from '../lib/config';
 import { formatBytes, formatTime } from '../lib/format';
-import type { Message } from '../lib/types';
+import type { Message, User } from '../lib/types';
 import { looksLikeMarkdown } from '../lib/markdown';
-import { previewOf } from '../store/chat';
+import { checkItem, previewOf } from '../store/chat';
 import AudioMessage from './AudioMessage';
 import RichText, { Linkified } from './RichText';
 
@@ -24,6 +24,8 @@ interface Props {
   onReact: (msg: Message, emoji: string) => void;
   onRetry: (msg: Message) => void;
   onOpenImage: (src: string) => void;
+  /** People in the chat, for who ticked a checklist item. */
+  who?: (id: number) => User | undefined;
 }
 
 function Ticks({ msg, read }: { msg: Message; read: boolean }) {
@@ -197,7 +199,15 @@ function MessageBubble(p: Props) {
 
           {msg.type === 'text' ? (
             <div className={`msg-text ${rich ? 'msg-md' : ''}`} dir="auto">
-              <RichText text={msg.body} />
+              <RichText
+                text={msg.body}
+                checklist={{
+                  checks: msg.checks,
+                  author: msg.senderId,
+                  who: p.who,
+                  onToggle: msg.id && !deleted ? (item, on) => void checkItem(msg, item, on) : undefined,
+                }}
+              />
               {meta}
             </div>
           ) : (

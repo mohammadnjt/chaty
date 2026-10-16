@@ -160,10 +160,12 @@ export const api = {
     request<Message[]>('GET', `/api/conversations/${id}/messages?before=${before}&limit=${PAGE_SIZE}`),
   send: (id: number, p: SendPayload) => request<Message>('POST', `/api/conversations/${id}/messages`, p),
   read: (id: number, messageId: number) => request('POST', `/api/conversations/${id}/read`, { messageId }),
-  pin: (id: number, messageId: number) => request('POST', `/api/conversations/${id}/pin`, { messageId }),
+  /** Pins a message, or unpins it with unpin; messageId 0 unpins them all. */
+  pin: (id: number, messageId: number, unpin = false) => request('POST', `/api/conversations/${id}/pin`, { messageId, unpin }),
   editMessage: (id: number, body: string) => request<Message>('PATCH', `/api/messages/${id}`, { body }),
   deleteMessage: (id: number, forAll: boolean) => request('DELETE', `/api/messages/${id}?for=${forAll ? 'all' : 'me'}`),
   react: (id: number, emoji: string) => request<Message>('POST', `/api/messages/${id}/react`, { emoji }),
+  check: (id: number, item: number, on: boolean) => request<Message>('POST', `/api/messages/${id}/check`, { item, on }),
   forward: (id: number, conversationIds: number[]) =>
     request<Message[]>('POST', `/api/messages/${id}/forward`, { conversationIds }),
   calls: () => request<CallRecord[]>('GET', '/api/calls'),

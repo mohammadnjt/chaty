@@ -64,6 +64,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("PATCH /api/messages/{id}", s.authed(s.editMessage))
 	mux.HandleFunc("DELETE /api/messages/{id}", s.authed(s.deleteMessage))
 	mux.HandleFunc("POST /api/messages/{id}/react", s.authed(s.reactMessage))
+	mux.HandleFunc("POST /api/messages/{id}/check", s.authed(s.checkItem))
 	mux.HandleFunc("POST /api/messages/{id}/forward", s.authed(s.forwardMessage))
 	mux.HandleFunc("GET /api/calls", s.authed(s.listCalls))
 	mux.HandleFunc("POST /api/upload", s.authed(s.upload))
@@ -1059,7 +1060,7 @@ func (s *Server) deleteMessage(w http.ResponseWriter, r *http.Request, me UserRe
 		s.push.Deleted(uid, m.ConvID, m.ID)
 	}
 	if s.store.UnpinIf(m.ConvID, m.ID) {
-		s.hub.sendToUsers(members, "pin", map[string]any{"conversationId": m.ConvID, "pinned": nil})
+		s.sendPins(m.ConvID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
@@ -1101,6 +1102,45 @@ func (s *Server) reactMessage(w http.ResponseWriter, r *http.Request, me UserRec
 			next[in.Emoji] = append(next[in.Emoji], me.ID)
 		}
 		x.Reactions = next
+		return nil
+	})
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	s.hub.sendToUsers(s.store.MemberIDs(m.ConvID), "message:update", view)
+	writeJSON(w, http.StatusOK, view)
+}
+
+// checklistItem matches the items of a checklist: "- [ ] …", "* [x] …", "1. [ ] …".
+var checklistItem = regexp.MustCompile(`(?m)^[ \t>]*(?:[-*+]|\d{1,3}[.)])[ \t]+\[[ xX]\]`) // also in > quotes
+
+// checkItem ticks or unticks a checklist item in a message; anyone in the chat can.
+func (s *Server) checkItem(w http.ResponseWriter, r *http.Request, me UserRec) {
+	m, ok := s.messageFor(w, r, me)
+	if !ok {
+		return
+	}
+	var in struct {
+		Item int  `json:"item"`
+		On   bool `json:"on"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if m.gone() || m.Type != "text" || in.Item < 0 || in.Item >= len(checklistItem.FindAllStringIndex(m.Body, -1)) {
+		httpError(w, http.StatusBadRequest, "no such checklist item")
+		return
+	}
+	if peer := s.store.DirectPeer(m.ConvID, me.ID); peer != 0 && (s.store.Blocked(me.ID, peer) || s.store.Blocked(peer, me.ID)) {
+		httpError(w, http.StatusForbidden, "you can't change this checklist")
+		return
+	}
+	view, err := s.store.UpdateMessage(m.ID, func(x *MsgRec) error {
+		if x.Checks == nil {
+			x.Checks = map[int]CheckMark{}
+		}
+		x.Checks[in.Item] = CheckMark{On: in.On, By: me.ID, At: nowMs()}
 		return nil
 	})
 	if err != nil {
@@ -1157,24 +1197,32 @@ func (s *Server) pinMessage(w http.ResponseWriter, r *http.Request, me UserRec) 
 		httpError(w, http.StatusNotFound, "conversation not found")
 		return
 	}
+	// messageId 0 unpins everything (what older apps send to unpin).
 	var in struct {
 		MessageID int64 `json:"messageId"`
+		Unpin     bool  `json:"unpin"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
-	if err := s.store.SetPinned(id, in.MessageID); err != nil {
+	if err := s.store.SetPin(id, in.MessageID, !in.Unpin); err != nil {
 		httpError(w, http.StatusNotFound, "message not found")
 		return
 	}
-	var pinned any
-	if in.MessageID != 0 {
-		if v, ok := s.store.MessageView(in.MessageID); ok {
-			pinned = v
+	s.sendPins(id)
+	writeJSON(w, http.StatusOK, map[string]any{"pins": s.store.Pins(id, me.ID)})
+}
+
+// sendPins tells every member what's pinned in conv now.
+func (s *Server) sendPins(conv int64) {
+	for _, uid := range s.store.MemberIDs(conv) {
+		pins := s.store.Pins(conv, uid)
+		var pinned any
+		if len(pins) > 0 {
+			pinned = pins[len(pins)-1]
 		}
+		s.hub.sendToUsers([]int64{uid}, "pin", map[string]any{"conversationId": conv, "pinned": pinned, "pins": pins})
 	}
-	s.hub.sendToUsers(s.store.MemberIDs(id), "pin", map[string]any{"conversationId": id, "pinned": pinned})
-	writeJSON(w, http.StatusOK, map[string]any{"pinned": pinned})
 }
 
 func (s *Server) markRead(w http.ResponseWriter, r *http.Request, me UserRec) {

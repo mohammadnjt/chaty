@@ -362,6 +362,7 @@ func pushPreview(m Message) string {
 // Markdown signs that would show as clutter in a notification (the app's
 // plainText in lib/markdown.ts does the same for previews).
 var (
+	mdTask  = regexp.MustCompile(`(?m)^[ \t]*(?:[-*+]|\d{1,3}[.)])[ \t]+\[[ xX]\][ \t]*`)
 	mdFence = regexp.MustCompile(`(?m)^[ \t]*(` + "```" + `|~~~).*$`)
 	mdRule  = regexp.MustCompile(`(?m)^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*$`)
 	mdRow   = regexp.MustCompile(`(?m)^[ \t]*\|(.*)\|[ \t]*$`)
@@ -375,6 +376,12 @@ func plainMarkdown(s string) string {
 	if !strings.ContainsAny(s, "*_~`#>|[") {
 		return s
 	}
+	s = mdTask.ReplaceAllStringFunc(s, func(t string) string {
+		if strings.ContainsAny(t, "xX") {
+			return "☑ "
+		}
+		return "☐ "
+	})
 	s = mdFence.ReplaceAllString(s, "")
 	s = mdRule.ReplaceAllString(s, "")
 	s = mdRow.ReplaceAllStringFunc(s, func(row string) string {

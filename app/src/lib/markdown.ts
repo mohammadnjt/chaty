@@ -30,6 +30,7 @@ export function looksLikeMarkdown(text: string): boolean {
 export function plainText(text: string): string {
   if (!looksLikeMarkdown(text)) return text;
   return text
+    .replace(/^[ \t]*(?:[-*+]|\d{1,3}[.)])[ \t]+\[([ xX])\][ \t]*/gm, (_, x: string) => (x === ' ' ? '☐ ' : '☑ '))
     .replace(/^[ \t]*(```|~~~).*$/gm, '')
     .replace(/^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*$/gm, '')
     .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) => row.split('|').map((c) => c.trim()).join(' · '))

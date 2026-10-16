@@ -141,7 +141,7 @@ socket.on('hello', (d: { online: number[] }) => {
 socket.on('message', receiveMessage);
 socket.on('message:update', updateMessage);
 socket.on('message:hide', hideMessage);
-socket.on('pin', (d: { conversationId: number; pinned: Message | null }) => setPinned(d));
+socket.on('pin', (d: { conversationId: number; pinned: Message | null; pins?: Message[] }) => setPinned(d));
 socket.on('read', applyRead);
 socket.on('typing', (d: { conversationId: number; userId: number; kind?: string }) =>
   setTyping(d.conversationId, d.userId, d.kind),

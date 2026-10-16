@@ -1,4 +1,4 @@
-import { Ban, Bell, BellOff, ChevronDown, ChevronLeft, EllipsisVertical, LogOut, Paperclip, Phone, Pin, Trash2, Video, X } from 'lucide-react';
+import { Ban, Bell, BellOff, ChevronDown, ChevronLeft, EllipsisVertical, LogOut, Paperclip, Phone, Trash2, Video, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { startCall } from '../call/engine';
 import { joinGroupCall, useGroupCall } from '../call/group';
@@ -26,6 +26,7 @@ import {
   nameOf,
   peerOf,
   pinMessage,
+  pinsOf,
   previewOf,
   reactTo,
   removeConversation,
@@ -355,6 +356,8 @@ export default function ChatScreen({ id }: { id: number }) {
   }, [forwardDraft]);
   const onReact = useCallback((msg: Message, emoji: string) => void reactTo(msg, emoji), []);
   const onRetry = useCallback((msg: Message) => msg.clientId && retryMessage(id, msg.clientId), [id]);
+  const members = conv?.members;
+  const who = useCallback((uid: number) => members?.find((u) => u.id === uid), [members]);
 
   async function sendPicks(picks: Pick[], caption: string, compress: boolean) {
     setAttach(null);
@@ -417,7 +420,7 @@ export default function ChatScreen({ id }: { id: number }) {
 
   const title = conv ? titleOf(conv, me) : '';
   const status = conv ? statusLine(conv, me, peer, presence, typers) : '';
-  const pinned = conv?.pinned;
+  const pins = pinsOf(conv);
 
   return (
     <div
@@ -488,27 +491,7 @@ export default function ChatScreen({ id }: { id: number }) {
         </div>
       )}
 
-      {pinned && (
-        <div className="pinned-bar" onClick={() => jumpTo(pinned.id)}>
-          <Pin size={16} />
-          <div className="pinned-text">
-            <span className="pinned-title">Pinned message</span>
-            <span className="pinned-body" dir="auto">
-              {previewOf(pinned)}
-            </span>
-          </div>
-          <button
-            className="icon-btn"
-            aria-label="Unpin"
-            onClick={(e) => {
-              e.stopPropagation();
-              void pinMessage(id, null);
-            }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-      )}
+      {pins.length > 0 && <PinnedBar key={id} pins={pins} onJump={jumpTo} onUnpin={(m) => void pinMessage(id, m, false)} />}
 
       <div className="scroll messages" ref={scroller} onScroll={onScroll}>
         <div className="messages-inner" ref={content}>
@@ -567,6 +550,7 @@ export default function ChatScreen({ id }: { id: number }) {
                     onReact={onReact}
                     onRetry={onRetry}
                     onOpenImage={setImage}
+                    who={who}
                   />
                 </div>
               );
@@ -640,14 +624,14 @@ export default function ChatScreen({ id }: { id: number }) {
           mine={menu.msg.senderId === me}
           isAdmin={isAdmin}
           saved={conv?.type === 'saved'}
-          pinned={pinned?.id === menu.msg.id}
+          pinned={pins.some((p) => p.id === menu.msg.id)}
           onClose={() => setMenu(null)}
           onReply={() => onReply(menu.msg)}
           onEdit={() => {
             setReplyTo(null);
             setEditing(menu.msg);
           }}
-          onPin={() => void pinMessage(id, pinned?.id === menu.msg.id ? null : menu.msg)}
+          onPin={() => void pinMessage(id, menu.msg, !pins.some((p) => p.id === menu.msg.id))}
           onForward={() => setForwarding(menu.msg)}
           onDelete={(forAll) => void deleteMessage(menu.msg, forAll)}
           onReact={(e) => void reactTo(menu.msg, e)}
@@ -660,3 +644,61 @@ export default function ChatScreen({ id }: { id: number }) {
     </div>
   );
 }
+
+/**
+ * The chat's pinned messages, like Telegram: the bar shows the newest; a tap
+ * goes to it and the bar moves on to the one before (and round again).
+ */
+function PinnedBar({ pins, onJump, onUnpin }: { pins: Message[]; onJump: (id: number) => void; onUnpin: (m: Message) => void }) {
+  const [at, setAt] = useState(pins.length - 1);
+  const count = useRef(pins.length);
+  useEffect(() => {
+    // A pin added or taken away: show the newest again.
+    if (count.current !== pins.length) setAt(pins.length - 1);
+    count.current = pins.length;
+  }, [pins.length]);
+  const i = Math.min(at, pins.length - 1);
+  const shown = pins[i];
+
+  function next() {
+    onJump(shown.id);
+    setAt(i > 0 ? i - 1 : pins.length - 1);
+  }
+
+  return (
+    <div className="pinned-bar" onClick={next}>
+      <PinMarks count={pins.length} at={i} />
+      <div className="pinned-text">
+        <span className="pinned-title">{pins.length > 1 ? `Pinned message #${i + 1}` : 'Pinned message'}</span>
+        <span className="pinned-body" dir="auto">
+          {previewOf(shown)}
+        </span>
+      </div>
+      <button
+        className="icon-btn"
+        aria-label="Unpin this message"
+        onClick={(e) => {
+          e.stopPropagation();
+          onUnpin(shown);
+        }}
+      >
+        <X size={18} />
+      </button>
+    </div>
+  );
+}
+
+/** One mark per pin (at most four, sliding along), the one shown lit. */
+function PinMarks({ count, at }: { count: number; at: number }) {
+  if (count < 2) return <span className="pin-marks single" />;
+  const n = Math.min(count, 4);
+  const first = Math.min(Math.max(at - 1, 0), count - n);
+  return (
+    <span className="pin-marks">
+      {Array.from({ length: n }, (_, k) => (
+        <span key={first + k} className={first + k === at ? 'on' : undefined} />
+      ))}
+    </span>
+  );
+}
+

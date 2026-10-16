@@ -3,6 +3,7 @@
 // separate chunk, fetched in the background once the app is idle.
 import { lazy, Suspense } from 'react';
 import { looksLikeMarkdown } from '../lib/markdown';
+import type { Checklist } from './Markdown';
 
 const loadMarkdown = () => import('./Markdown');
 const Markdown = lazy(loadMarkdown);
@@ -28,11 +29,11 @@ export function Linkified({ text }: { text: string }) {
   );
 }
 
-export default function RichText({ text }: { text: string }) {
+export default function RichText({ text, checklist }: { text: string; checklist?: Checklist }) {
   if (!looksLikeMarkdown(text)) return <Linkified text={text} />;
   return (
     <Suspense fallback={<Linkified text={text} />}>
-      <Markdown text={text} />
+      <Markdown text={text} checklist={checklist} />
     </Suspense>
   );
 }

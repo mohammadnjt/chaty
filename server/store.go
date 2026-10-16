@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -57,15 +58,16 @@ type SessionRec struct {
 }
 
 type ConvRec struct {
-	ID         int64  `json:"id"`
-	Type       string `json:"type"` // direct | group | saved (Saved Messages: a chat with only its owner)
-	Title      string `json:"title"`
-	Avatar     string `json:"avatar"`
-	DirectKey  string `json:"directKey,omitempty"`
-	CreatedBy  int64  `json:"createdBy"`
-	CreatedAt  int64  `json:"createdAt"`
-	PinnedID   int64  `json:"pinnedId,omitempty"`
-	OnlyAdmins bool   `json:"onlyAdmins,omitempty"` // groups: only admins send messages
+	ID         int64   `json:"id"`
+	Type       string  `json:"type"` // direct | group | saved (Saved Messages: a chat with only its owner)
+	Title      string  `json:"title"`
+	Avatar     string  `json:"avatar"`
+	DirectKey  string  `json:"directKey,omitempty"`
+	CreatedBy  int64   `json:"createdBy"`
+	CreatedAt  int64   `json:"createdAt"`
+	PinnedID   int64   `json:"pinnedId,omitempty"`   // the one pin older servers kept; moved into Pins on load
+	Pins       []int64 `json:"pins,omitempty"`       // pinned messages, in the order they were pinned
+	OnlyAdmins bool    `json:"onlyAdmins,omitempty"` // groups: only admins send messages
 }
 
 type MemberRec struct {
@@ -76,6 +78,15 @@ type MemberRec struct {
 	ClearedID  int64 `json:"clearedId,omitempty"` // history up to here is hidden for this member
 	Muted      bool  `json:"muted,omitempty"`
 	Admin      bool  `json:"admin,omitempty"` // runs the group (its creator always does)
+}
+
+// CheckMark is a checklist item ("- [ ] …" in a message) as someone in the
+// chat last left it. Items the sender wrote as "- [x]" count as ticked by
+// them until someone changes them.
+type CheckMark struct {
+	On bool  `json:"on"`
+	By int64 `json:"by"`
+	At int64 `json:"at"`
 }
 
 type MsgRec struct {
@@ -92,6 +103,7 @@ type MsgRec struct {
 	ReplyTo       int64              `json:"replyTo,omitempty"`
 	ForwardedFrom string             `json:"forwardedFrom,omitempty"`
 	Reactions     map[string][]int64 `json:"reactions,omitempty"`
+	Checks        map[int]CheckMark  `json:"checks,omitempty"` // checklist items ticked in the chat, by item number
 	HiddenFor     []int64            `json:"hiddenFor,omitempty"`
 	DeletedAt     int64              `json:"deletedAt,omitempty"` // deleted for everyone: gone, except that admins still see it, marked
 	EditedAt      int64              `json:"editedAt,omitempty"`
@@ -155,6 +167,7 @@ type Message struct {
 	Reply          *ReplyPreview      `json:"reply,omitempty"`
 	ForwardedFrom  string             `json:"forwardedFrom,omitempty"`
 	Reactions      map[string][]int64 `json:"reactions,omitempty"`
+	Checks         map[int]CheckMark  `json:"checks,omitempty"`
 	DeletedAt      int64              `json:"deletedAt,omitempty"` // only admins get deleted messages
 	EditedAt       int64              `json:"editedAt,omitempty"`
 	CreatedAt      int64              `json:"createdAt"`
@@ -167,7 +180,8 @@ type Conversation struct {
 	Avatar      string           `json:"avatar"`
 	Members     []User           `json:"members"`
 	LastMessage *Message         `json:"lastMessage"`
-	Pinned      *Message         `json:"pinned"`
+	Pinned      *Message         `json:"pinned"` // the latest pin (older apps show only this one)
+	Pins        []Message        `json:"pins"`   // every pin, oldest message first
 	Unread      int              `json:"unread"`
 	Reads       map[string]int64 `json:"reads"`
 	CreatedAt   int64            `json:"createdAt"`
@@ -463,6 +477,10 @@ func (s *Store) addUserL(u *UserRec) {
 }
 
 func (s *Store) addConvL(c *ConvRec) {
+	if c.PinnedID != 0 && len(c.Pins) == 0 {
+		c.Pins = []int64{c.PinnedID}
+	}
+	c.PinnedID = 0
 	s.convs[c.ID] = c
 	if c.DirectKey != "" {
 		s.direct[c.DirectKey] = c.ID
@@ -1400,39 +1418,81 @@ func (s *Store) Conversation(conv, viewer int64) (*Conversation, error) {
 			v.Unread++
 		}
 	}
-	if p := s.msgByID[c.PinnedID]; p != nil && !p.gone() && p.ID > cleared {
-		view := s.viewL(p)
-		v.Pinned = &view
+	v.Pins = s.pinsL(c, cleared)
+	if len(v.Pins) > 0 {
+		v.Pinned = &v.Pins[len(v.Pins)-1]
 	}
 	return v, nil
 }
 
-func (s *Store) SetPinned(conv, msgID int64) error {
+const maxPins = 50
+
+// pinsL lists a chat's pinned messages a member sees (not deleted, not
+// cleared away), oldest message first.
+func (s *Store) pinsL(c *ConvRec, cleared int64) []Message {
+	out := []Message{}
+	for _, id := range c.Pins {
+		if p := s.msgByID[id]; p != nil && !p.gone() && p.ID > cleared {
+			out = append(out, s.viewL(p))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// Pins is what uid sees pinned in conv.
+func (s *Store) Pins(conv, uid int64) []Message {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c := s.convs[conv]
+	if c == nil {
+		return []Message{}
+	}
+	var cleared int64
+	if m := s.members[conv][uid]; m != nil {
+		cleared = m.ClearedID
+	}
+	return s.pinsL(c, cleared)
+}
+
+// SetPin pins or unpins one message; msgID 0 unpins them all. A chat keeps
+// at most maxPins: pinning one more lets the earliest pin go.
+func (s *Store) SetPin(conv, msgID int64, on bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c := s.convs[conv]
 	if c == nil {
 		return errNotFound
 	}
-	if msgID != 0 {
-		if m := s.msgByID[msgID]; m == nil || m.ConvID != conv || m.gone() {
-			return errNotFound
+	if msgID == 0 {
+		c.Pins = nil
+		s.putConv(c)
+		return nil
+	}
+	if m := s.msgByID[msgID]; on && (m == nil || m.ConvID != conv || m.gone()) {
+		return errNotFound
+	}
+	pins := slices.DeleteFunc(slices.Clone(c.Pins), func(id int64) bool { return id == msgID })
+	if on {
+		pins = append(pins, msgID)
+		if len(pins) > maxPins {
+			pins = pins[len(pins)-maxPins:]
 		}
 	}
-	c.PinnedID = msgID
+	c.Pins = pins
 	s.putConv(c)
 	return nil
 }
 
-// UnpinIf clears the pinned message when it is msgID.
+// UnpinIf takes msgID out of the chat's pins, reporting whether it was pinned.
 func (s *Store) UnpinIf(conv, msgID int64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c := s.convs[conv]
-	if c == nil || c.PinnedID != msgID {
+	if c == nil || !slices.Contains(c.Pins, msgID) {
 		return false
 	}
-	c.PinnedID = 0
+	c.Pins = slices.DeleteFunc(slices.Clone(c.Pins), func(id int64) bool { return id == msgID })
 	s.putConv(c)
 	return true
 }
@@ -1477,6 +1537,9 @@ func (s *Store) viewL(m *MsgRec) Message {
 	}
 	if len(m.Reactions) > 0 {
 		v.Reactions = m.Reactions
+	}
+	if len(m.Checks) > 0 {
+		v.Checks = m.Checks
 	}
 	if m.ReplyTo != 0 {
 		if r := s.msgByID[m.ReplyTo]; r != nil {
