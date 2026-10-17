@@ -7,6 +7,7 @@ import { playMessage } from '../lib/sounds';
 import { appVisible } from '../lib/visibility';
 import type { Conversation, Message, MessageType, Sticker, User } from '../lib/types';
 import { plainText, splitLongText } from '../lib/markdown';
+import { showNotice } from './notice';
 import { toast } from './toast';
 
 interface Presence {
@@ -272,11 +273,15 @@ export function setPinned(d: { conversationId: number; pinned: Message | null; p
 /** A chat's pinned messages, oldest first. */
 export const pinsOf = (c?: Conversation): Message[] => c?.pins ?? (c?.pinned ? [c.pinned] : []);
 
+/** A message from a chat that isn't on screen: a sound and the banner if the app is in front, else a notification. */
 function announce(c: Conversation, msg: Message) {
   if (c.muted) return;
   const sender = c.members.find((m) => m.id === msg.senderId);
   const title = c.type === 'group' ? `${sender?.name ?? 'Someone'} · ${c.title}` : (sender?.name ?? 'New message');
-  if (appVisible()) playMessage();
+  if (appVisible()) {
+    playMessage();
+    showNotice(msg);
+  }
   notify(title, previewOf(msg));
 }
 
@@ -545,6 +550,18 @@ export async function forwardWithComment(msg: Message, conversationIds: number[]
     }
   }
   return forwardMessage(msg, conversationIds);
+}
+
+/**
+ * Answers from the banner: sends the text (in several messages if it's
+ * long) and marks the chat read. Throws if it couldn't be sent.
+ */
+export async function quickReply(convId: number, body: string, replyTo?: Message) {
+  const parts = splitLongText(body);
+  for (let i = 0; i < parts.length; i++) {
+    receiveMessage(await api.send(convId, { type: 'text', body: parts[i], clientId: uid(), replyTo: i ? undefined : replyTo?.id }));
+  }
+  markRead(convId);
 }
 
 /** Puts a message above a chat's composer, to forward when Send is pressed (null takes it away). */

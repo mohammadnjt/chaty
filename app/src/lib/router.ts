@@ -2,7 +2,7 @@
 // Android back button maps onto history.back().
 import { useSyncExternalStore } from 'react';
 
-const getPath = () => location.hash.replace(/^#/, '') || '/';
+export const getPath = () => location.hash.replace(/^#/, '') || '/';
 
 const ROUTE_EVENT = 'chaty:route';
 

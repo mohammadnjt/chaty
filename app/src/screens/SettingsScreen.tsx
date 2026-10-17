@@ -28,6 +28,7 @@ import { PALETTES, setPalette, setTheme, useTheme, type ThemeChoice } from '../l
 import { navigate } from '../lib/router';
 import { socket } from '../lib/socket';
 import { logout, updateProfile, useAuth } from '../store/auth';
+import { bannersOn, setBannersOn } from '../store/notice';
 import { toast } from '../store/toast';
 import type { User } from '../lib/types';
 import { HeroHeader } from './ChatsScreen';
@@ -114,6 +115,7 @@ export default function SettingsScreen() {
     typeof Notification !== 'undefined' ? Notification.permission : 'denied',
   );
   const [pushOn, setPushOn] = useState(pushEnabled);
+  const [banners, setBanners] = useState(bannersOn);
 
   const cleanUsername = username.trim().replace(/^@/, '');
   const dirty = name.trim() !== me.name || about.trim() !== me.about || cleanUsername !== (me.username ?? '');
@@ -369,6 +371,15 @@ export default function SettingsScreen() {
               <span>Enable notifications</span>
             </button>
           )}
+          <Toggle
+            label="Message banners"
+            hint="While you use Chaty, a new message from another chat shows at the top, with a quick reply"
+            on={banners}
+            onChange={(v) => {
+              setBanners(v);
+              setBannersOn(v);
+            }}
+          />
         </div>
 
         <button className="btn btn-danger" onClick={() => logout()}>

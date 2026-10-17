@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Logo from './components/Logo';
+import { NoticeHost } from './components/MessageNotice';
 import Scenery from './components/Scenery';
 import { StickerSheetHost } from './components/StickerPacks';
 import { StoryHost } from './components/StoryViewer';
@@ -101,6 +102,7 @@ export default function App() {
           <ConnectionBar />
           <StoryHost />
           <StickerSheetHost />
+          <NoticeHost />
           <CallOverlay />
           <GroupCallOverlay />
           <RemoteAudio />
