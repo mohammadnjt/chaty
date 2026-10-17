@@ -2023,14 +2023,50 @@ button.user-row:active {
 }
 
 .emoji-panel {
+  display: flex;
+  flex-direction: column;
   max-height: 250px;
-  overflow-y: auto;
   margin: 0 12px;
-  padding: 10px 10px 4px;
+  overflow: hidden;
   border-radius: 20px;
   background: rgb(var(--surface-2) / 0.96);
   border: 1px solid var(--line);
   backdrop-filter: blur(16px);
+}
+
+/* With the Stickers tab: the same height on both tabs. */
+.emoji-panel.tabbed {
+  height: 290px;
+  max-height: none;
+}
+
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 10px 4px;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px 2px;
+  flex-shrink: 0;
+}
+
+.panel-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+.panel-tabs button.on {
+  background: rgb(var(--accent-rgb) / 0.22);
+  color: var(--text);
 }
 
 .emoji-panel h4 {
@@ -2053,6 +2089,185 @@ button.user-row:active {
 
 .emoji-grid button:active {
   background: rgb(var(--ink) / 0.08);
+}
+
+/* ---------- stickers ---------- */
+
+.sticker {
+  display: block;
+  flex-shrink: 0;
+}
+
+.sticker img,
+.sticker video,
+.sticker-lottie {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 4px;
+}
+
+.sticker-cell {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  transition: background 0.15s;
+}
+
+.sticker-cell .sticker {
+  position: absolute;
+  inset: 6px;
+}
+
+button.sticker-cell:active {
+  background: rgb(var(--ink) / 0.08);
+}
+
+@media (hover: hover) {
+  button.sticker-cell:hover {
+    background: rgb(var(--ink) / 0.06);
+  }
+}
+
+.sticker-strip {
+  display: flex;
+  gap: 4px;
+  padding: 4px 10px 6px;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.sticker-strip button {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+}
+
+.sticker-strip button:active {
+  background: rgb(var(--ink) / 0.08);
+}
+
+.sticker-strip-add {
+  color: var(--accent-2);
+}
+
+.sticker-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.sticker-empty p {
+  margin: 0;
+}
+
+/* A sticker in a chat: no bubble, just the sticker with its time on it. */
+.bubble.bubble-sticker:not(.bubble-gone) {
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  color: var(--text);
+}
+
+.msg-row.tail .bubble.bubble-sticker::before {
+  display: none;
+}
+
+.bubble.bubble-sticker .msg-media-meta {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 3px 7px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.bubble.bubble-sticker .msg-media-meta .msg-meta {
+  margin: 0;
+  color: #fff;
+}
+
+.bubble.bubble-sticker:not(.bubble-gone) :is(.msg-sender, .msg-forwarded) {
+  width: fit-content;
+  padding: 3px 9px;
+  border-radius: 11px;
+  background: rgb(var(--surface-2) / 0.85);
+  backdrop-filter: blur(10px);
+}
+
+.bubble.bubble-sticker .msg-forwarded {
+  color: var(--text-2);
+}
+
+.bubble.bubble-sticker:not(.bubble-gone) .msg-reply {
+  background: rgb(var(--surface-2) / 0.9);
+  border-left-color: var(--accent-2);
+  backdrop-filter: blur(10px);
+}
+
+.bubble.bubble-sticker .msg-reply-name {
+  color: var(--accent-2);
+}
+
+/* The sticker packs sheet */
+.sticker-sheet .sheet-head {
+  padding-left: 10px;
+}
+
+.sticker-sheet .sheet-head h3 {
+  padding-left: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pack-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 18px;
+  cursor: pointer;
+}
+
+.pack-row:active {
+  background: rgb(var(--ink) / 0.05);
+}
+
+.pack-cover {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 16px;
+  background: rgb(var(--ink) / 0.05);
+}
+
+.sheet-stickers {
+  padding: 4px 14px 10px;
+}
+
+.sheet-foot {
+  position: sticky;
+  bottom: 0;
+  padding: 10px 16px 6px;
+  background: var(--panel);
 }
 
 /* ---------- overlays ---------- */
@@ -3604,6 +3819,76 @@ button.user-row:active {
 
 .pad-x {
   padding: 0 16px 8px;
+}
+
+/* The Stickers tab */
+.ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip.new-pack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-2);
+}
+
+.pack-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pick-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 0 20px;
+}
+
+.admin-stickers {
+  padding: 4px 12px 12px;
+}
+
+.admin-stickers .sticker-cell {
+  background: rgb(var(--ink) / 0.04);
+}
+
+.admin-stickers .sticker-cell.on {
+  background: rgb(var(--accent-rgb) / 0.22);
+  box-shadow: inset 0 0 0 2px rgb(var(--accent-2-rgb) / 0.8);
+}
+
+.sticker-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-grad);
+  color: #fff;
+}
+
+.sticker-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  gap: 10px;
+  padding: 18px 16px 10px;
+  background: linear-gradient(transparent, var(--bg) 40%);
+}
+
+.sticker-actions .field {
+  flex: 1;
+  min-width: 0;
 }
 
 .admin-user {

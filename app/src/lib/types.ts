@@ -15,7 +15,7 @@ export interface User {
   hideLastSeen?: boolean;
 }
 
-export type MessageType = 'text' | 'image' | 'audio' | 'video' | 'file' | 'deleted';
+export type MessageType = 'text' | 'image' | 'audio' | 'video' | 'file' | 'sticker' | 'deleted';
 
 export interface ReplyPreview {
   id: number;
@@ -34,6 +34,7 @@ export interface Message {
   fileName?: string;
   fileSize?: number;
   duration?: number; // ms
+  stickerId?: number; // stickers: which one (mediaUrl is its file)
   clientId?: string;
   reply?: ReplyPreview;
   forwardedFrom?: string;
@@ -95,6 +96,7 @@ export interface Features {
   reactions: boolean;
   forwarding: boolean;
   stories: boolean;
+  stickers: boolean;
 }
 
 export interface AppConfig {
@@ -176,4 +178,17 @@ export interface StoryGroup {
 export interface StoryViewer {
   user: User;
   at: number;
+}
+
+/** A picture (.webp, .png, .gif), a video sticker (.webm) or an animated one (.tgs, Lottie). */
+export interface Sticker {
+  id: number;
+  url: string;
+}
+
+export interface StickerPack {
+  id: number;
+  title: string;
+  stickers: Sticker[];
+  users?: number; // admins: how many people added it
 }

@@ -25,6 +25,7 @@ import {
 import { loadConfig } from './config';
 import { resetGroupCalls } from '../call/group';
 import { stopVoice } from './player';
+import { resetStickers } from './stickers';
 import { resetStories } from './stories';
 import { toast } from './toast';
 
@@ -106,6 +107,7 @@ function clearSession() {
   resetGroupCalls();
   resetChat();
   resetStories();
+  resetStickers();
   useAuth.setState({ status: 'guest', me: null, pendingCount: 0 });
   navigate('/', { replace: true });
 }

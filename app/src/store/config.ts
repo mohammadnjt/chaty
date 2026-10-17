@@ -20,6 +20,7 @@ const defaults: AppConfig = {
     reactions: true,
     forwarding: true,
     stories: true,
+    stickers: true,
   },
   calls: { mode: 'auto', p2pTimeoutSec: 12, iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] },
 };

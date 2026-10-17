@@ -4,7 +4,7 @@ import { formatDuration } from '../lib/format';
 import { MAX_TEXT, splitLongText } from '../lib/markdown';
 import { ensureMediaPermission } from '../lib/native';
 import { socket } from '../lib/socket';
-import type { Message } from '../lib/types';
+import type { Message, Sticker } from '../lib/types';
 import { errorText } from '../lib/api';
 import { editMessage, forwardWithComment, previewOf, sendMessage, sendTexts } from '../store/chat';
 import { useConfig } from '../store/config';
@@ -131,6 +131,11 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
       if (!coarsePointer) el.focus();
       el.setSelectionRange(at + e.length, at + e.length);
     });
+  }
+
+  function sendSticker(s: Sticker) {
+    sendMessage(conversationId, { type: 'sticker', sticker: s, replyTo });
+    onDone();
   }
 
   function onChange(v: string) {
@@ -297,7 +302,7 @@ export default function Composer({ conversationId, replyTo, replyName, editing, 
   return (
     <div className="composer-wrap">
       {emoji && !recording && (
-        <EmojiPicker onPick={insertEmoji} />
+        <EmojiPicker onPick={insertEmoji} onSticker={f.stickers && !editing && !forwarding ? sendSticker : undefined} />
       )}
       {(replyTo || editing || forwarding) && !recording && (
         <div className="composer-context">

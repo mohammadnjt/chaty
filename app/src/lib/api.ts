@@ -7,6 +7,8 @@ import type {
   Message,
   MessageType,
   Settings,
+  Sticker,
+  StickerPack,
   Story,
   StoryGroup,
   StoryViewer,
@@ -65,6 +67,13 @@ function uploadWithProgress(
   path = '/api/upload',
   fields: Record<string, string> = {},
 ) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  form.append('file', file, filename);
+  return postForm(path, form, onProgress);
+}
+
+function postForm(path: string, form: FormData, onProgress?: (p: number) => void) {
   return new Promise<any>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', apiUrl(path));
@@ -81,9 +90,6 @@ function uploadWithProgress(
       else reject(new ApiError(capitalize(data?.error || `Upload failed (${xhr.status})`), xhr.status));
     };
     xhr.onerror = () => reject(new ApiError("Can't reach the server. Check your connection.", 0));
-    const form = new FormData();
-    for (const [k, v] of Object.entries(fields)) form.append(k, v);
-    form.append('file', file, filename);
     xhr.send(form);
   });
 }
@@ -102,6 +108,7 @@ export interface SendPayload {
   duration?: number;
   clientId?: string;
   replyTo?: number;
+  stickerId?: number;
 }
 
 export interface AndroidApp {
@@ -180,6 +187,10 @@ export const api = {
   viewStory: (id: number) => request('POST', `/api/stories/${id}/view`),
   storyViews: (id: number) => request<StoryViewer[]>('GET', `/api/stories/${id}/views`),
   deleteStory: (id: number) => request('DELETE', `/api/stories/${id}`),
+  /** Every sticker pack, and the ones you added (the latest first). */
+  stickers: () => request<{ packs: StickerPack[]; mine: number[] }>('GET', '/api/stickers'),
+  addStickerPack: (id: number) => request<{ mine: number[] }>('POST', `/api/stickers/packs/${id}`),
+  removeStickerPack: (id: number) => request<{ mine: number[] }>('DELETE', `/api/stickers/packs/${id}`),
   admin: {
     overview: () => request<AdminOverview>('GET', '/api/admin/overview'),
     users: () => request<User[]>('GET', '/api/admin/users'),
@@ -194,6 +205,21 @@ export const api = {
       request<{ ok: boolean; describe: string }>('POST', '/api/admin/storage/switch', { driver, dsn }),
     uploadAndroid: (file: File, version: string, onProgress?: (p: number) => void) =>
       uploadWithProgress(file, file.name, onProgress, '/api/admin/android', { version }) as Promise<AndroidApp>,
+    stickers: () => request<{ packs: StickerPack[]; unsorted: Sticker[] }>('GET', '/api/admin/stickers'),
+    /** Sticker files and .zip packs, filed under packId (0: unsorted). */
+    uploadStickers: (files: File[], packId: number, onProgress?: (p: number) => void) => {
+      const form = new FormData();
+      form.append('packId', String(packId));
+      for (const f of files) form.append('file', f, f.name);
+      return postForm('/api/admin/stickers', form, onProgress) as Promise<{ added: number; skipped: number }>;
+    },
+    createStickerPack: (title: string) => request<StickerPack>('POST', '/api/admin/sticker-packs', { title }),
+    renameStickerPack: (id: number, title: string) => request('PATCH', `/api/admin/sticker-packs/${id}`, { title }),
+    deleteStickerPack: (id: number) => request('DELETE', `/api/admin/sticker-packs/${id}`),
+    orderStickerPacks: (ids: number[]) => request('PUT', '/api/admin/sticker-packs/order', { ids }),
+    /** packId 0 puts them back with the unsorted ones. */
+    moveStickers: (ids: number[], packId: number) => request('POST', '/api/admin/stickers/move', { ids, packId }),
+    deleteStickers: (ids: number[]) => request('POST', '/api/admin/stickers/delete', { ids }),
   },
 };
 

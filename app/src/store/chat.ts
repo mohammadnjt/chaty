@@ -5,7 +5,7 @@ import { notify } from '../lib/native';
 import { clearChatNotification } from '../lib/push';
 import { playMessage } from '../lib/sounds';
 import { appVisible } from '../lib/visibility';
-import type { Conversation, Message, MessageType, User } from '../lib/types';
+import type { Conversation, Message, MessageType, Sticker, User } from '../lib/types';
 import { plainText, splitLongText } from '../lib/markdown';
 import { toast } from './toast';
 
@@ -70,6 +70,8 @@ export function previewOf(m: Pick<Message, 'type' | 'body' | 'fileName'> | null 
       return '🎤 Voice message';
     case 'file':
       return `📎 ${m.fileName || 'File'}`;
+    case 'sticker':
+      return 'Sticker';
     case 'deleted':
       return '🚫 Message deleted';
   }
@@ -355,6 +357,7 @@ export interface Draft {
   file?: Blob;
   fileName?: string;
   duration?: number;
+  sticker?: Sticker;
   replyTo?: Message | null;
 }
 
@@ -395,6 +398,8 @@ function queue(convId: number, draft: Draft): string {
     duration: draft.duration,
     fileName: draft.fileName,
     fileSize: draft.file?.size,
+    mediaUrl: draft.sticker?.url,
+    stickerId: draft.sticker?.id,
     reply: r ? { id: r.id, senderId: r.senderId, type: r.type, body: r.body } : undefined,
     clientId,
     createdAt: Date.now(),
@@ -442,6 +447,7 @@ async function deliver(convId: number, clientId: string): Promise<boolean> {
       type: draft.type,
       body: draft.body,
       duration: draft.duration,
+      stickerId: draft.sticker?.id,
       clientId,
       replyTo: draft.replyTo?.id || undefined,
     };

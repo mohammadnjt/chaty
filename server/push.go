@@ -351,6 +351,8 @@ func pushPreview(m Message) string {
 		return "🎤 Voice message"
 	case "file":
 		return orDefault(m.Body, "📎 "+m.FileName)
+	case "sticker":
+		return "Sticker"
 	}
 	body := plainMarkdown(m.Body)
 	if r := []rune(body); len(r) > 180 {

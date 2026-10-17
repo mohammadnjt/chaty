@@ -7,6 +7,7 @@ import { looksLikeMarkdown } from '../lib/markdown';
 import { checkItem, previewOf } from '../store/chat';
 import AudioMessage from './AudioMessage';
 import RichText, { Linkified } from './RichText';
+import Sticker from './Sticker';
 
 interface Props {
   msg: Message;
@@ -24,6 +25,8 @@ interface Props {
   onReact: (msg: Message, emoji: string) => void;
   onRetry: (msg: Message) => void;
   onOpenImage: (src: string) => void;
+  /** A tap on a sticker: shows its pack. */
+  onSticker?: (msg: Message) => void;
   /** People in the chat, for who ticked a checklist item. */
   who?: (id: number) => User | undefined;
 }
@@ -116,6 +119,7 @@ function MessageBubble(p: Props) {
     if (longPressed()) return;
     if (msg.status === 'failed') return p.onRetry(msg);
     const target = e.target as HTMLElement;
+    if (target.closest('.sticker') && msg.id && !deleted) return p.onSticker?.(msg);
     if (target.closest('a, button, video, audio, .audio-msg, .msg-reply')) return;
     if (msg.type === 'text' || deleted || msg.type === 'file') openMenu();
   }
@@ -178,6 +182,7 @@ function MessageBubble(p: Props) {
             </div>
           )}
           {msg.type === 'audio' && <AudioMessage msg={msg} />}
+          {msg.type === 'sticker' && <Sticker url={msg.mediaUrl ?? ''} size={168} />}
           {msg.type === 'file' && (
             <a className="msg-file" href={sending ? undefined : fileHref(msg)} target="_blank" rel="noreferrer" download={msg.fileName}>
               <span className="msg-file-icon">

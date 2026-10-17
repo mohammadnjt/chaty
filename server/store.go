@@ -42,6 +42,8 @@ type UserRec struct {
 	// Privacy (zero values = visible, so older records keep the defaults)
 	HidePhoneSearch bool `json:"hidePhoneSearch,omitempty"`
 	HideLastSeen    bool `json:"hideLastSeen,omitempty"`
+	// Sticker packs they added, the latest first (see stickers.go)
+	StickerPacks []int64 `json:"stickerPacks,omitempty"`
 }
 
 // BlockRec: By no longer wants anything from User.
@@ -93,12 +95,13 @@ type MsgRec struct {
 	ID            int64              `json:"id"`
 	ConvID        int64              `json:"convId"`
 	SenderID      int64              `json:"senderId"`
-	Type          string             `json:"type"` // text | image | audio | video | file | deleted (older servers' deletions)
+	Type          string             `json:"type"` // text | image | audio | video | file | sticker | deleted (older servers' deletions)
 	Body          string             `json:"body"`
 	MediaURL      string             `json:"mediaUrl,omitempty"`
 	FileName      string             `json:"fileName,omitempty"`
 	FileSize      int64              `json:"fileSize,omitempty"`
 	Duration      int64              `json:"duration,omitempty"`
+	StickerID     int64              `json:"stickerId,omitempty"` // stickers: which one (its file is MediaURL)
 	ClientID      string             `json:"clientId,omitempty"`
 	ReplyTo       int64              `json:"replyTo,omitempty"`
 	ForwardedFrom string             `json:"forwardedFrom,omitempty"`
@@ -163,6 +166,7 @@ type Message struct {
 	FileName       string             `json:"fileName,omitempty"`
 	FileSize       int64              `json:"fileSize,omitempty"`
 	Duration       int64              `json:"duration,omitempty"`
+	StickerID      int64              `json:"stickerId,omitempty"`
 	ClientID       string             `json:"clientId,omitempty"`
 	Reply          *ReplyPreview      `json:"reply,omitempty"`
 	ForwardedFrom  string             `json:"forwardedFrom,omitempty"`
@@ -322,8 +326,10 @@ type Store struct {
 	blocks     map[int64]map[int64]bool // blocker -> blocked users
 	stories    map[int64]*StoryRec
 	pushTokens map[string]*PushRec
+	packs      map[int64]*StickerPackRec
+	stickers   map[int64]*StickerRec
 
-	nextUser, nextConv, nextMsg, nextStory int64
+	nextUser, nextConv, nextMsg, nextStory, nextPack, nextSticker int64
 
 	w             *writer
 	driver        string
@@ -337,7 +343,7 @@ func newStore(p Persister, driver string) (*Store, error) {
 		userConvs: map[int64]map[int64]bool{}, msgs: map[int64][]*MsgRec{}, msgByID: map[int64]*MsgRec{},
 		clientIdx: map[string]*MsgRec{}, calls: map[string]*CallRec{}, userCalls: map[int64][]*CallRec{},
 		usernames: map[string]*UserRec{}, blocks: map[int64]map[int64]bool{}, stories: map[int64]*StoryRec{},
-		pushTokens: map[string]*PushRec{}, driver: driver,
+		pushTokens: map[string]*PushRec{}, packs: map[int64]*StickerPackRec{}, stickers: map[int64]*StickerRec{}, driver: driver,
 	}
 	raw := map[string]map[string]json.RawMessage{}
 	lines := 0
@@ -428,6 +434,25 @@ func newStore(p Persister, driver string) (*Store, error) {
 		}
 		return err
 	})
+	decode("stickerpack", func(d []byte) error {
+		var p StickerPackRec
+		err := json.Unmarshal(d, &p)
+		if err == nil {
+			s.addStickerPackL(&p)
+		}
+		return err
+	})
+	decode("sticker", func(d []byte) error {
+		var st StickerRec
+		err := json.Unmarshal(d, &st)
+		if err == nil {
+			if s.packs[st.PackID] == nil {
+				st.PackID = 0 // its pack is gone: keep it with the unsorted ones
+			}
+			s.addStickerL(&st)
+		}
+		return err
+	})
 	decode("call", func(d []byte) error {
 		var c CallRec
 		err := json.Unmarshal(d, &c)
@@ -515,7 +540,8 @@ func (s *Store) addCallL(c *CallRec) {
 }
 
 func (s *Store) liveCountL() int {
-	n := len(s.users) + len(s.sessions) + len(s.convs) + len(s.msgByID) + len(s.calls) + len(s.stories) + len(s.pushTokens)
+	n := len(s.users) + len(s.sessions) + len(s.convs) + len(s.msgByID) + len(s.calls) + len(s.stories) + len(s.pushTokens) +
+		len(s.packs) + len(s.stickers)
 	for _, m := range s.members {
 		n += len(m)
 	}
@@ -559,6 +585,12 @@ func (s *Store) allRecordsL() []record {
 	for _, p := range s.pushTokens {
 		add("push", p.Token, p)
 	}
+	for _, p := range s.packs {
+		add("stickerpack", strconv.FormatInt(p.ID, 10), p)
+	}
+	for _, st := range s.stickers {
+		add("sticker", strconv.FormatInt(st.ID, 10), st)
+	}
 	for by, set := range s.blocks {
 		for user := range set {
 			add("block", memberKey(by, user), BlockRec{By: by, User: user, At: nowMs()})
@@ -585,7 +617,7 @@ func (s *Store) putConv(c *ConvRec)     { s.put("conv", strconv.FormatInt(c.ID, 
 
 // UploadsInUse names the files in the uploads folder that something points
 // at: messages (deleted ones too, which admins still see), photos of people
-// and groups, and stories.
+// and groups, stories and stickers.
 func (s *Store) UploadsInUse() map[string]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -608,6 +640,9 @@ func (s *Store) UploadsInUse() map[string]bool {
 		add(m.MediaURL)
 	}
 	for _, st := range s.stories {
+		add(st.URL)
+	}
+	for _, st := range s.stickers {
 		add(st.URL)
 	}
 	return used
@@ -1531,7 +1566,7 @@ func (s *Store) Visible(id, viewer int64) bool {
 func (s *Store) viewL(m *MsgRec) Message {
 	v := Message{
 		ID: m.ID, ConversationID: m.ConvID, SenderID: m.SenderID, Type: m.Type, Body: m.Body,
-		MediaURL: m.MediaURL, FileName: m.FileName, FileSize: m.FileSize, Duration: m.Duration,
+		MediaURL: m.MediaURL, FileName: m.FileName, FileSize: m.FileSize, Duration: m.Duration, StickerID: m.StickerID,
 		ClientID: m.ClientID, ForwardedFrom: m.ForwardedFrom, DeletedAt: m.DeletedAt, EditedAt: m.EditedAt,
 		CreatedAt: m.CreatedAt,
 	}

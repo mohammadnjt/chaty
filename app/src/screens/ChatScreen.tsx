@@ -1,4 +1,4 @@
-import { Ban, Bell, BellOff, ChevronDown, ChevronLeft, EllipsisVertical, LogOut, Paperclip, Phone, Trash2, Video, X } from 'lucide-react';
+import { Ban, Bell, BellOff, ChevronDown, ChevronLeft, EllipsisVertical, LogOut, Paperclip, Phone, Sticker as StickerIcon, Trash2, Video, X } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { startCall } from '../call/engine';
 import { joinGroupCall, useGroupCall } from '../call/group';
@@ -39,6 +39,7 @@ import {
   useChat,
 } from '../store/chat';
 import { useConfig } from '../store/config';
+import { showPackOf, showStickerPacks } from '../store/stickers';
 import { toast } from '../store/toast';
 import { GroupAdminMenu, GroupHero, GroupMembers } from './GroupInfo';
 
@@ -154,6 +155,18 @@ function InfoSheet({ conv, me, onClose }: { conv: Conversation; me: number; onCl
 
         <div className="sheet-menu">
           {isGroupAdmin(conv, me) && <GroupAdminMenu conv={conv} onClose={onClose} />}
+          {saved && f.stickers && (
+            <button
+              className="menu-item"
+              onClick={() => {
+                onClose();
+                showStickerPacks();
+              }}
+            >
+              <StickerIcon size={19} />
+              Sticker packs
+            </button>
+          )}
           {!saved && (
             <button className="menu-item" onClick={() => void setMuted(conv.id, !conv.muted)}>
               {conv.muted ? <Bell size={19} /> : <BellOff size={19} />}
@@ -356,6 +369,7 @@ export default function ChatScreen({ id }: { id: number }) {
   }, [forwardDraft]);
   const onReact = useCallback((msg: Message, emoji: string) => void reactTo(msg, emoji), []);
   const onRetry = useCallback((msg: Message) => msg.clientId && retryMessage(id, msg.clientId), [id]);
+  const onSticker = useCallback((msg: Message) => void showPackOf(msg.stickerId), []);
   const members = conv?.members;
   const who = useCallback((uid: number) => members?.find((u) => u.id === uid), [members]);
 
@@ -475,6 +489,11 @@ export default function ChatScreen({ id }: { id: number }) {
             <Phone size={21} />
           </button>
         )}
+        {conv?.type === 'saved' && f.stickers && (
+          <button className="icon-btn accent" onClick={() => showStickerPacks()} aria-label="Sticker packs">
+            <StickerIcon size={22} />
+          </button>
+        )}
         <button className="icon-btn accent" onClick={() => setInfo(true)} aria-label="Details">
           <EllipsisVertical size={21} />
         </button>
@@ -550,6 +569,7 @@ export default function ChatScreen({ id }: { id: number }) {
                     onReact={onReact}
                     onRetry={onRetry}
                     onOpenImage={setImage}
+                    onSticker={onSticker}
                     who={who}
                   />
                 </div>

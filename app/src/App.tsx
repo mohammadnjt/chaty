@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Logo from './components/Logo';
 import Scenery from './components/Scenery';
+import { StickerSheetHost } from './components/StickerPacks';
 import { StoryHost } from './components/StoryViewer';
 import { matchPath, usePath } from './lib/router';
 import { socket } from './lib/socket';
@@ -99,6 +100,7 @@ export default function App() {
           <Screen path={path} />
           <ConnectionBar />
           <StoryHost />
+          <StickerSheetHost />
           <CallOverlay />
           <GroupCallOverlay />
           <RemoteAudio />

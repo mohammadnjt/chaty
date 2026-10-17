@@ -9,8 +9,9 @@ import { socket } from '../lib/socket';
 import type { AdminOverview, Features, Settings, User } from '../lib/types';
 import { refreshPendingCount, useAuth } from '../store/auth';
 import { toast } from '../store/toast';
+import StickersTab from './AdminStickers';
 
-type Tab = 'users' | 'features' | 'calls' | 'storage' | 'general';
+type Tab = 'users' | 'features' | 'stickers' | 'calls' | 'storage' | 'general';
 
 const FEATURE_LABELS: [keyof Features, string, string][] = [
   ['voiceCalls', 'Voice calls', 'Audio calls between two people'],
@@ -24,6 +25,7 @@ const FEATURE_LABELS: [keyof Features, string, string][] = [
   ['reactions', 'Reactions', 'Emoji reactions on messages'],
   ['forwarding', 'Forwarding', 'Forwarding messages to other chats'],
   ['stories', 'Stories', 'Photo and video stories that disappear after 24 hours'],
+  ['stickers', 'Stickers', 'Sticker packs people add from Saved Messages (made in the Stickers tab)'],
 ];
 
 function UserRow({ u, me, onChange }: { u: User; me: number; onChange: (u: User | null) => void }) {
@@ -480,6 +482,7 @@ export default function AdminScreen() {
           [
             ['users', 'Users'],
             ['features', 'Features'],
+            ['stickers', 'Stickers'],
             ['calls', 'Calls'],
             ['storage', 'Storage'],
             ['general', 'General'],
@@ -510,6 +513,8 @@ export default function AdminScreen() {
             <SaveBar dirty={dirty} busy={busy} onSave={save} />
           </>
         )}
+
+        {tab === 'stickers' && <StickersTab />}
 
         {tab === 'calls' && draft && calls && overview && (
           <>

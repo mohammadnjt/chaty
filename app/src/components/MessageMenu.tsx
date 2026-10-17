@@ -106,7 +106,7 @@ export default function MessageMenu(p: Props) {
                 <Copy size={18} /> Copy {msg.type === 'text' ? 'text' : 'caption'}
               </button>
             )}
-            {f.editMessages && p.mine && sent && !deleted && (msg.type === 'text' || msg.type !== 'audio') && (
+            {f.editMessages && p.mine && sent && !deleted && msg.type !== 'audio' && msg.type !== 'sticker' && (
               <button className="menu-item" onClick={act(p.onEdit)}>
                 <Pencil size={18} /> Edit
               </button>

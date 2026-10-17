@@ -70,6 +70,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/upload", s.authed(s.upload))
 	s.adminRoutes(mux)
 	s.storyRoutes(mux)
+	s.stickerRoutes(mux)
 	s.pushRoutes(mux)
 	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
 		u, ok := s.store.UserByToken(r.URL.Query().Get("token"))
@@ -916,12 +917,14 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, me UserRec)
 		Duration int64  `json:"duration"`
 		ClientID string `json:"clientId"`
 		ReplyTo  int64  `json:"replyTo"`
+		Sticker  int64  `json:"stickerId"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
 	f := s.features()
 	in.Body = strings.TrimSpace(in.Body)
+	var sticker int64
 	switch in.Type {
 	case "text":
 		if in.Body == "" || utf8.RuneCountInString(in.Body) > 4000 {
@@ -945,6 +948,18 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, me UserRec)
 		if utf8.RuneCountInString(in.FileName) > 200 {
 			in.FileName = string([]rune(in.FileName)[:200])
 		}
+	case "sticker":
+		if !f.Stickers {
+			disabled(w)
+			return
+		}
+		st, ok := s.store.StickerByID(in.Sticker)
+		if !ok {
+			httpError(w, http.StatusNotFound, "this sticker is no longer available")
+			return
+		}
+		sticker = st.ID
+		in.Body, in.MediaURL, in.FileName, in.FileSize, in.Duration = "", st.URL, "", 0, 0
 	default:
 		httpError(w, http.StatusBadRequest, "unknown message type")
 		return
@@ -958,7 +973,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request, me UserRec)
 	}
 	msg, created := s.store.InsertMessage(MsgRec{
 		ConvID: id, SenderID: me.ID, Type: in.Type, Body: in.Body, MediaURL: in.MediaURL, FileName: in.FileName,
-		FileSize: in.FileSize, Duration: in.Duration, ClientID: in.ClientID, ReplyTo: in.ReplyTo,
+		FileSize: in.FileSize, Duration: in.Duration, StickerID: sticker, ClientID: in.ClientID, ReplyTo: in.ReplyTo,
 	})
 	if created {
 		s.publish(msg)
@@ -992,6 +1007,10 @@ func (s *Server) editMessage(w http.ResponseWriter, r *http.Request, me UserRec)
 	in.Body = strings.TrimSpace(in.Body)
 	if m.SenderID != me.ID || m.gone() {
 		httpError(w, http.StatusForbidden, "you can only edit your own messages")
+		return
+	}
+	if m.Type == "sticker" {
+		httpError(w, http.StatusBadRequest, "stickers can't be edited")
 		return
 	}
 	if (m.Type == "text" && in.Body == "") || utf8.RuneCountInString(in.Body) > 4000 {
@@ -1183,7 +1202,7 @@ func (s *Server) forwardMessage(w http.ResponseWriter, r *http.Request, me UserR
 		}
 		msg, _ := s.store.InsertMessage(MsgRec{
 			ConvID: cid, SenderID: me.ID, Type: m.Type, Body: m.Body, MediaURL: m.MediaURL, FileName: m.FileName,
-			FileSize: m.FileSize, Duration: m.Duration, ForwardedFrom: from,
+			FileSize: m.FileSize, Duration: m.Duration, StickerID: m.StickerID, ForwardedFrom: from,
 		})
 		s.publish(msg)
 		out = append(out, msg)
@@ -1375,6 +1394,13 @@ func uploadsHandler(dir string) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Cache-Control", "public, max-age=31536000, immutable")
 		if serveAVIF(w, r, dir, name) {
+			return
+		}
+		if filepath.Ext(name) == ".tgs" {
+			// An animated sticker: Lottie JSON, gzipped, which the browser unpacks itself.
+			h.Set("Content-Type", "application/json")
+			h.Set("Content-Encoding", "gzip")
+			fs.ServeHTTP(w, r)
 			return
 		}
 		if ct, ok := inlineTypes[filepath.Ext(name)]; ok {
